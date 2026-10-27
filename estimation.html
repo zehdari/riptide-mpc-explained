@@ -17,7 +17,7 @@
   <article>
     <div class="prose">
       <h2 id="why">Why the MPC has its own estimator</h2>
-      <p>Talos already runs an EKF (robot_localization) that fuses the same sensors. The MPC uses it only as an anchor, because for control it is late. Bench and pool tests on 2026-10-27 measured its velocity 0.2–0.35 s behind the DVL, and its roll and pitch rates about 0.45 s behind the IMU. Half a second of lag in the feedback of a controller planning 1.5 s ahead is a third of its horizon.</p>
+      <p>Talos already runs an EKF (robot_localization) that fuses the same sensors. The MPC uses it only as an anchor, because for control it is late. Bench and pool tests on 2026-10-27 measured its velocity 0.2–0.35 s behind the DVL, and its roll and pitch rates about 0.45 s behind the IMU. Half a second of lag in the feedback of a controller planning 1.5 s ahead is a third of its horizon. (Both were tuning problems: the IMU reported its gyro about 10,000× noisier than it is, and the EKF's velocity process noise was tiny. Fixing them the same day brought the rates to about 45 ms on the bench and the velocity to about 0.1 s in pool-bag replays. The MPC still builds its own state, which is on time regardless.)</p>
       <p>So <a href="https://github.com/osu-uwrt/riptide_control/blob/mpc/riptide_mpc/src/state_estimator.cpp"><code>state_estimator.cpp</code></a> builds the MPC's state directly from raw sensors (<code>state_source: sensors</code> in <code>mpc.yaml</code>). Between measurements it propagates the same Fossen model, driven by a replica of the thrusters fed every command the MPC publishes. Each measurement then corrects the channel it observes.</p>
     </div>
     <figure class="fig">

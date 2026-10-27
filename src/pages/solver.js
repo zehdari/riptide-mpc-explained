@@ -175,5 +175,5 @@ setup();
     ca.set([{ name: 'solve time', color: 'var(--state)', width: 1.5, values: d.t.map((t, i) => ({ x: t, y: d.solve_ms[i] })) },
       { name: '50 ms period', color: 'var(--ink-2)', dash: true, width: 1.2, noTip: true, values: [{ x: d.t[0], y: 50 }, { x: d.t.at(-1), y: 50 }] }], { yDomain: [0, 55] });
   });
-  loadDemo('gov_on').then((d) => cb.set([{ name: 'QP iterations', color: 'var(--prediction)', width: 1.5, values: series(d, (r) => r.qp) }], { yDomain: [0, 18] }));
+  loadDemo('gov_on').then((d) => cb.set([{ name: 'QP iterations', color: 'var(--prediction)', width: 1.5, values: series(d, (r) => r.qp) }], { yDomain: [0, 6] }));
 }

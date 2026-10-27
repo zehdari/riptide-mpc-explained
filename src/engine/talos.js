@@ -1,6 +1,10 @@
 // Talos, as riptide_mpc loads it: riptide_descriptions/config/talos.yaml (thruster
 // poses, base_link) + riptide_mpc/config/models/talos.yaml (body and hydrodynamics),
-// + config/mpc.yaml (controller settings). Values copied from the mpc branch, 2026-10-27.
+// + config/mpc.yaml (controller settings). Values copied from the mpc branch, 2026-10-27,
+// except surge added mass: talos.yaml still has 31.9 kg, which identification had been
+// rejecting under the old 3x rigid-mass limit. The value here is the re-fit of the
+// 2026-10-26 untethered session (talos_20261026_204748) with the per-axis limit:
+// 123.8 kg added, 158.1 kg total, R^2 0.97, no extra thrust lag.
 
 export const vehicle = {
   base_link: [-0.14, 0.03, -0.09], // vehicle config frame (CAD origin)
@@ -27,7 +31,7 @@ export const hydro = {
     [0.0496, 1.0051, -0.0083],
     [0.0945, -0.0083, 1.8607],
   ],
-  added_mass: [31.9014, 79.8831, 74.1148, 0.0624, 0.0602, 2.0867], // diagonal
+  added_mass: [123.7676, 79.8831, 74.1148, 0.0624, 0.0602, 2.0867], // diagonal
   linear_damping: [15.6745, 46.2026, 12.0607, 9.9109, 3.0046, 1.9477], // diagonal
   quadratic_damping: [223.6306, 153.789, 266.4236, 2.7724, 1.4992, 4.9627],
   water_density: 998.2,

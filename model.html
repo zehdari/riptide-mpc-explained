@@ -53,19 +53,23 @@
       <h3 id="mass">Mass and added mass</h3>
       <p>The rigid-body part is plain mass and inertia about the COM: 34.3 kg and the CAD inertia tensor.</p>
       <div class="M">\mathbf M_{RB} = \begin{bmatrix} m I_3 & 0 \\ 0 & I_g \end{bmatrix}, \qquad m = 34.307\ \text{kg}</div>
-      <p>Accelerating a body in water also accelerates the water around it, and that water's momentum has to come from somewhere. Fossen models it as <strong>added mass</strong> <span class="m">\mathbf M_A</span>, a symmetric matrix the vehicle carries around as if it were its own. For a frame robot with flat panels it is large: Talos moving sideways behaves as if it weighed 114 kg.</p>
+      <p>Accelerating a body in water also accelerates the water around it, and that water's momentum has to come from somewhere. Fossen models it as <strong>added mass</strong> <span class="m">\mathbf M_A</span>, a symmetric matrix the vehicle carries around as if it were its own. For a frame robot with flat panels it is large: pushing forward, Talos behaves as if it weighed 158 kg, more than four times its own mass.</p>
     </div>
     <figure class="fig narrow">
       <div class="panel" id="mass-chart"></div>
-      <figcaption><b>Effective mass per axis.</b> Rigid mass plus identified added mass. Surge is cheapest because Talos is narrowest end-on; sway and heave push the broad sides through the water. The rotational axes are in kg·m² and scaled to fit.</figcaption>
+      <figcaption><b>Effective mass per axis.</b> Rigid mass plus identified added mass. Surge is the heaviest: Talos is only 0.35 m long but 0.83 m wide and 0.55 m tall, so moving forward pushes its biggest face through the water. The rotational axes are in kg·m² and scaled to fit.</figcaption>
     </figure>
     <div class="prose">
+      <div class="pool-note">
+        <b>From the pool</b>
+        <p>For weeks the model used 32 kg of surge added mass (66 kg total). Every identification run measured 115–158 kg, but a plausibility limit of 3× the rigid mass threw the fits out, on the theory that slow ESC starts were being read as mass. They weren't: re-fitting with the thrust delayed by up to 0.6 s found no delay that explains the data, and the thrusters were already spinning when the moves began. With half the real inertia, the MPC's feedforward pushed half as hard as Talos needed, the vehicle fell behind, and the late brake felt like a jolt. The limit is now per axis (5× for translations), and this site uses the re-fit of the 2026-10-26 untethered session: 123.8 kg added, 158 kg total.</p>
+      </div>
       <p>The model checks <span class="m">\mathbf M</span> is symmetric positive definite and factors it once with a Cholesky decomposition, so evaluating <span class="m">\mathbf M^{-1}</span> each step is a stored 6×6 product.</p>
 
       <h3 id="coriolis">Coriolis and centripetal terms</h3>
       <p>Because <span class="m">\boldsymbol\nu</span> is measured in a rotating frame, momentum that is constant in the world still changes in body coordinates. riptide_mpc uses the momentum form from Fossen's MSS toolbox (<code>m2c</code>), which works for any symmetric mass matrix including off-diagonal added mass. With the momentum <span class="m">h = \mathbf M \boldsymbol\nu = (h_1, h_2)</span>:</p>
       <div class="M">\mathbf C(\mathbf M, \boldsymbol\nu) = \begin{bmatrix} 0 & -S(h_1) \\ -S(h_1) & -S(h_2) \end{bmatrix}, \qquad S(a)\,b = a \times b</div>
-      <p>It is applied twice: to <span class="m">\mathbf M_{RB}</span> with the absolute velocity and to <span class="m">\mathbf M_A</span> with the velocity relative to the water. One consequence is worth knowing: the added-mass part produces a yaw moment when Talos moves forward and sideways at once, the <strong>Munk moment</strong>, <span class="m">N = (A_{vv} - A_{uu})\,u\,v \approx 48\,uv</span> N·m. At 0.5 m/s forward with a 0.1 m/s slip that is 2.4 N·m, as much as the yaw drag at 0.5 rad/s. A controller without the model would see it as an unexplained yaw disturbance; the MPC predicts it and counters it before it turns the robot.</p>
+      <p>It is applied twice: to <span class="m">\mathbf M_{RB}</span> with the absolute velocity and to <span class="m">\mathbf M_A</span> with the velocity relative to the water. One consequence is worth knowing: the added-mass part produces a yaw moment when Talos moves forward and sideways at once, the <strong>Munk moment</strong>, <span class="m">N = (A_{vv} - A_{uu})\,u\,v \approx -44\,uv</span> N·m. At 0.5 m/s forward with a 0.1 m/s slip that is 2.2 N·m, as much as the yaw drag at 0.5 rad/s. A controller without the model would see it as an unexplained yaw disturbance; the MPC predicts it and counters it before it turns the robot.</p>
 
       <h3 id="damping">Damping</h3>
       <p>Drag is modelled per axis as linear plus quadratic in the relative velocity. Both matrices are diagonal for Talos:</p>

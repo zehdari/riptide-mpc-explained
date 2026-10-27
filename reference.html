@@ -99,7 +99,7 @@
     </div>
     <figure class="fig">
       <div class="panel"><div class="cols" id="gov-charts"></div></div>
-      <figcaption><b>An 8 m surge with the governor on and off</b>, simulated with the browser port. To make the effect visible the profile is allowed 0.3 m/s² here; its 0.6 m/s cruise is above the ~0.54 m/s that 73 N of thrust can hold against drag. Without the governor the reference pulls 87 cm ahead; with it the lag stays near 20 cm and the reference waits for the vehicle.</figcaption>
+      <figcaption><b>An 8 m surge with the governor on and off</b>, simulated with the browser port. To make the effect visible the profile is allowed 0.3 m/s² here; its 0.6 m/s cruise is above the ~0.54 m/s that 73 N of thrust can hold against drag. Without the governor the reference pulls 95 cm ahead; with it the lag stays near 20 cm and the reference waits for the vehicle.</figcaption>
     </figure>
     <div class="prose">
       <p>One more detail ties the reference to the MPC. The profile lives on the prediction's clock: it describes where the vehicle should be 30 ms from now, when the command being computed starts to act. A new setpoint therefore starts moving at the first instant thrust can respond, and the reference never gets a head start the vehicle cannot physically recover.</p>

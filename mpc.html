@@ -75,7 +75,7 @@
     </div>
     <figure class="fig">
       <div class="panel"><div class="cols" id="ff-charts"></div></div>
-      <figcaption><b>A 1.5 m surge step with and without the feedforward</b>, browser port, with the effort weight raised to 0.03 so the effect is easy to see. Without it the effort penalty pulls thrust toward zero: Talos lags the reference by up to 6.7 cm and sags 1 cm in depth while moving. With it, the lag is 1.1 cm. At the shipped weight (0.001) the difference is smaller, but it never goes away.</figcaption>
+      <figcaption><b>A 1.5 m surge step with and without the feedforward</b>, browser port, with the effort weight raised to 0.03 so the effect is easy to see. Without it the effort penalty pulls thrust toward zero: Talos lags the reference by up to 12 cm and sags almost 1 cm in depth while moving. With it, the lag is 1.1 cm. At the shipped weight (0.001) the difference is smaller, but it never goes away.</figcaption>
     </figure>
     <div class="prose">
       <p>The smoothness term works on the same deviations: <span class="m">r_\Delta\|(u_k - u^{\text{ff}}_k) - (u_{k-1} - u^{\text{ff}}_{k-1})\|^2</span>, with <span class="m">u_{-1}</span> the deviation actually sent last tick. Following a smooth, jerk-limited feedforward is free; jumping away from it is not.</p>

@@ -72,7 +72,7 @@
         <li>Solve the Newton system on the free variables only, <span class="m">H_{ff}\, d_f = -\nabla_f</span>, with a Cholesky factorization.</li>
         <li>Step <span class="m">x \leftarrow \Pi(x + \alpha d)</span>, projecting back onto the box, halving <span class="m">\alpha</span> until the projected Armijo condition holds.</li>
       </ol>
-      <p>When no bound is active, step 3 is the exact minimizer and the solver stops after one iteration. When thrusters saturate it typically needs two to four, occasionally more than ten.</p>
+      <p>When no bound is active, step 3 is the exact minimizer and the solver stops after one iteration. When thrusters saturate it typically needs two to four.</p>
     </div>
     <figure class="fig">
       <div class="panel">
@@ -96,7 +96,7 @@ VectorXd U = warm_.cwiseMax(lb_).cwiseMin(ub_);</code></pre>
     </div>
     <figure class="fig">
       <div class="panel"><div class="cols" id="rti-charts"></div></div>
-      <figcaption><b>Solver effort.</b> Left: solve time per tick of the C++ controller on Cam-PC over the 7.2 m path in Nereus (median 11 ms; the controller has 50 ms). Right: QP iterations per tick in the browser port during the hard 8 m surge from Chapter 3, where thrusters run into their limits. While nothing saturates, one iteration is exact (every tick of the path needed only one); with many active bounds it takes up to 17.</figcaption>
+      <figcaption><b>Solver effort.</b> Left: solve time per tick of the C++ controller on Cam-PC over the 7.2 m path in Nereus (median 11 ms; the controller has 50 ms). Right: QP iterations per tick in the browser port during the hard 8 m surge from Chapter 3, where thrusters run into their limits. While nothing saturates, one iteration is exact (every tick of the path needed only one); with many active bounds it takes up to five.</figcaption>
     </figure>
     <div class="prose">
       <h2 id="cost">Where the time goes</h2>
