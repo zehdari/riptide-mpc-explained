@@ -151,11 +151,6 @@ svg.chart .crosshair { stroke: var(--ink-2); stroke-width: 1; }
 .katex-display { margin: 1.3rem 0 1.5rem; overflow-x: auto; overflow-y: hidden; padding: 0.2rem 0; }
 .eq-note { font-family: var(--sans); font-size: 0.86rem; color: var(--ink-2); margin-top: -0.6rem; }
 
-/* callouts: lessons from the pool */
-.pool-note { background: var(--paper-2); border-radius: 8px; padding: 0.9rem 1.15rem 1rem; margin: 1.6rem 0; }
-.pool-note > b:first-child { display: flex; align-items: center; gap: 0.5rem; font-family: var(--sans); font-size: 0.92rem; margin-bottom: 0.3rem; }
-.pool-note > b:first-child::before { content: ''; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--accent); }
-.pool-note p:last-child { margin-bottom: 0; }
 
 .src { font-family: var(--sans); font-size: 0.84rem; color: var(--ink-2); }
 .src a { color: var(--ink-2); }

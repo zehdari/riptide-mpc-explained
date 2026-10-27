@@ -43,10 +43,6 @@
       <figcaption><b>A rest-to-rest move</b> with the profile's own decision rule. Defaults are Talos's horizontal limits from <code>mpc.yaml</code>: 0.6 m/s, 0.1 m/s², 0.3 m/s³. With them a 2 m move never reaches cruise speed: acceleration is the bottleneck. Small moves are governed by jerk, so peak acceleration grows like <span class="m">(d j^2/2)^{1/3}</span>.</figcaption>
     </figure>
     <div class="prose">
-      <div class="pool-note">
-        <b>From the pool</b>
-        <p>The acceleration limit was 0.5 m/s² until a pool test on 2026-10-24: a 3 cm step then took ±23 N bursts on the forward thrusters and pitched Talos about 8°. The forward thrusters sit above and below the COM, so a hard surge kick is also a pitch kick. At 0.1 m/s² and 0.3 m/s³ the same moves are gentle; acceleration ramps over 0.33 s.</p>
-      </div>
 
       <h3 id="capture">Arriving without chatter</h3>
       <p>Bang-bang jerk switching is time-optimal, but near the target it chatters at the 2 ms resolution. Inside a small capture region (2 mm, 2 cm/s, 0.1 m/s²) the profile switches to a critically damped linear law with a triple pole at <span class="m">s = -10</span>:</p>

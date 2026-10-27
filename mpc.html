@@ -79,10 +79,6 @@
     </figure>
     <div class="prose">
       <p>The smoothness term works on the same deviations: <span class="m">r_\Delta\|(u_k - u^{\text{ff}}_k) - (u_{k-1} - u^{\text{ff}}_{k-1})\|^2</span>, with <span class="m">u_{-1}</span> the deviation actually sent last tick. Following a smooth, jerk-limited feedforward is free; jumping away from it is not.</p>
-      <div class="pool-note">
-        <b>From the pool</b>
-        <p>The smoothness weight came from a sweep on 2026-10-03. At 0.005 Talos wobbled in hover (0.6–0.9° RMS pitch, about 4°/s); at 0.02 and 0.05 it held pitch to 0.07–0.09° with less total thrust. The controller ships with 0.05.</p>
-      </div>
 
       <h2 id="delay">Planning through the delay</h2>
       <p>A command computed now starts acting 30 ms from now. Everything sent before it is already queued in the thrusters, and the controller knows exactly what: it keeps a replica of the thruster dynamics, fed every command it publishes. So before planning, it rolls the measured state forward through the delay with those in-flight commands:</p>
