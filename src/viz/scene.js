@@ -59,18 +59,12 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
   sun.position.set(3, 8, 4);
   scene.add(sun);
 
-  // Pool floor with lane line.
+  // Pool floor.
   const tex = tileTexture();
   tex.repeat.set(16, 16);
   const floor = new THREE.Mesh(new THREE.PlaneGeometry(32, 32), new THREE.MeshLambertMaterial({ map: tex }));
   floor.position.z = floorDepth;
   root.add(floor);
-  const lane = new THREE.Mesh(new THREE.PlaneGeometry(24, 0.25), new THREE.MeshBasicMaterial({ color: 0x1d3a48 }));
-  lane.position.set(0, -3.5, floorDepth + 0.002);
-  root.add(lane);
-  const laneT = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 1.0), new THREE.MeshBasicMaterial({ color: 0x1d3a48 }));
-  laneT.position.set(12, -3.5, floorDepth + 0.002);
-  root.add(laneT);
   // Water surface hint.
   const surface = new THREE.Mesh(new THREE.PlaneGeometry(32, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08, side: THREE.DoubleSide }));
   root.add(surface);
