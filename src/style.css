@@ -159,6 +159,9 @@ svg.chart .crosshair { stroke: var(--ink-2); stroke-width: 1; }
 .src { font-family: var(--sans); font-size: 0.84rem; color: var(--ink-2); }
 .src a { color: var(--ink-2); }
 
+/* tables scroll sideways inside their column instead of widening the page */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; margin: 1rem 0 1.6rem; }
+.table-scroll > table.params { margin: 0; }
 table.params { border-collapse: collapse; width: 100%; font-family: var(--sans); font-size: 0.86rem; margin: 1rem 0 1.6rem; font-variant-numeric: tabular-nums; }
 table.params th { text-align: left; font-weight: 600; color: var(--ink-2); border-bottom: 1px solid var(--ink-2); padding: 0.4rem 0.6rem 0.4rem 0; }
 table.params td { border-bottom: 1px solid var(--rule); padding: 0.42rem 0.6rem 0.42rem 0; vertical-align: top; }
@@ -215,6 +218,10 @@ svg.graph .pulse { fill: var(--accent); }
   .hero .copy p { font-size: 1.02rem; }
   .hud { min-width: 0; width: 100%; }
   .hero .copy { top: 3.6rem; }
+  table.params { font-size: 0.8rem; }
+  table.params th, table.params td { padding-right: 0.5rem; }
+  table.params td:first-child { white-space: normal; }
+  table.params code { overflow-wrap: break-word; font-size: 0.74rem; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }

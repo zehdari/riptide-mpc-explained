@@ -82,8 +82,25 @@ function nextPrev() {
   slot.innerHTML = `${prev ? `<a href="${prev.href}"><small>Previous</small><strong>${prev.title}</strong></a>` : '<span></span>'}${next ? `<a href="${next.href}" style="text-align:right"><small>Next</small><strong>${next.title}</strong></a>` : ''}`;
 }
 
+// Wraps tables so a wide one scrolls inside the text column on phones.
+export function wrapTables(root = document) {
+  root.querySelectorAll('table.params').forEach((t) => {
+    if (t.parentElement.classList.contains('table-scroll')) return;
+    const w = document.createElement('div');
+    w.className = 'table-scroll';
+    t.replaceWith(w);
+    w.appendChild(t);
+    // Let long names break after _ and / rather than mid-word.
+    t.querySelectorAll('code').forEach((c) => {
+      if (!c.children.length) c.innerHTML = c.textContent.replace(/[&<>]/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[m]).replace(/([_/])/g, '$1<wbr>');
+    });
+  });
+}
+
 export function setup() {
   const main = document.querySelector('main');
+  wrapTables();
+  new MutationObserver(() => wrapTables()).observe(main, { childList: true, subtree: true });
   const shell = document.createElement('div');
   shell.className = 'shell';
   main.parentNode.insertBefore(shell, main);
