@@ -192,6 +192,7 @@ svg.graph .pulse { fill: var(--accent); }
 .hero canvas { display: block; width: 100%; height: 100%; touch-action: none; }
 .hero .copy { position: absolute; left: clamp(1.2rem, 4vw, 3.5rem); top: clamp(1.5rem, 6vh, 4rem); max-width: 31rem; pointer-events: none; }
 .hero .copy h1 { color: var(--ink); }
+.hero .copy .sub { font-family: var(--sans); font-size: clamp(1.25rem, 2.2vw, 1.7rem); font-weight: 650; font-stretch: 112%; line-height: 1.2; color: var(--ink); margin-top: 0.7rem; max-width: 30rem; }
 .hero .copy p { font-size: 1.2rem; line-height: 1.5; color: var(--ink-2); margin-top: 1rem; max-width: 27rem; }
 .hero .dock { position: absolute; left: clamp(1.2rem, 4vw, 3.5rem); right: clamp(1.2rem, 4vw, 3.5rem); bottom: 1.2rem; display: flex; flex-wrap: wrap; gap: 0.8rem 1.2rem; align-items: flex-end; justify-content: space-between; pointer-events: none; }
 .hero .dock > * { pointer-events: auto; }
@@ -223,6 +224,7 @@ svg.graph .pulse { fill: var(--accent); }
   .page-head { padding-top: 4.2rem; }
   body { font-size: 1.08rem; }
   .hero .copy p { font-size: 1.02rem; }
+  .hero .copy .sub { font-size: 1.2rem; }
   .hud { min-width: 0; width: 100%; }
   .hero .attitude { grid-template-columns: 1fr; width: 100%; }
   .hero .attitude input { width: 11rem; }

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How Talos flies: the riptide_mpc controller, explained</title>
-<meta name="description" content="An interactive walkthrough of riptide_mpc, the model predictive controller that flies UWRT's Talos AUV: Fossen dynamics, thruster allocation, S-curve references, the condensed QP, and how to build your own.">
+<title>How Talos flies: nonlinear model predictive control for an AUV</title>
+<meta name="description" content="An interactive walkthrough of riptide_mpc, the nonlinear model predictive controller (NMPC) that flies UWRT's Talos AUV: Fossen dynamics, thruster allocation, S-curve references, the condensed QP, and how to build your own.">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
 </head>
 <body>
@@ -13,7 +13,8 @@
     <canvas id="hero-canvas" aria-label="3D view of Talos in a pool. Tap the floor to send it somewhere."></canvas>
     <div class="copy">
       <h1>How Talos flies</h1>
-      <p>This is the model predictive controller that flies the Underwater Robotics Team's AUV, running live in your browser. Tap the pool floor and watch it plan 1.5 seconds ahead.</p>
+      <p class="sub">Nonlinear model predictive control for an AUV</p>
+      <p>This is riptide_mpc, the nonlinear MPC that flies the Underwater Robotics Team's AUV, running live in your browser. Tap the pool floor and watch it plan 1.5 seconds ahead.</p>
     </div>
     <div class="dock">
       <div class="actions">
@@ -71,8 +72,9 @@
         <li><strong>Send the first 50 ms.</strong> Only the first stage's thrust is published, scaled to the 73 N power budget if needed, and converted to propeller RPM. Next tick, it all happens again.</li>
       </ol>
 
-      <h2 id="why">Why an MPC</h2>
+      <h2 id="why" data-short="Why a nonlinear MPC">Why a nonlinear MPC</h2>
       <p>An AUV has a few properties that make a predictive controller worth its cost. The thrusters are coupled: no single thruster moves Talos along one axis, so every motion is a blend of all eight. Thrust is bounded, per thruster and in total, and a controller that knows the bounds can plan around them instead of saturating. Thrust is late: 30 ms of delay plus an 80 ms spin-up lag is two control ticks before a command has mostly arrived. And the physics is well understood: the Fossen model of a rigid body in water predicts Talos's motion over a couple of seconds well enough to plan with.</p>
+      <p>It is a <strong>nonlinear</strong> MPC because it predicts with the full nonlinear Fossen model: quadratic drag, Coriolis and buoyancy that depends on attitude, plus the quaternion attitude itself. A linear MPC would fix one linearization (say, about a level hover) and plan with that forever, which is wrong as soon as Talos is moving fast, turning or tilted. riptide_mpc instead rolls the nonlinear model forward every tick and relinearizes along that predicted trajectory. It then takes one Gauss–Newton step of the nonlinear problem, a sequential quadratic programming (SQP) step in the real-time iteration scheme (Chapter 5). Each QP is linear-quadratic; the problem it is solving is not.</p>
       <p>The price is computation and a model you have to identify. riptide_mpc pays the first with a careful formulation (a small dense QP, one Newton step of the nonlinear problem per tick) and the second with pool identification runs and an online disturbance estimate that soaks up what the model gets wrong.</p>
 
       <h2 id="files">Where things live in the code</h2>

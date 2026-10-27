@@ -39,7 +39,7 @@ function buildRail() {
   rail.className = 'rail';
   rail.setAttribute('aria-label', 'Chapters');
   rail.innerHTML = `
-    <a class="brand" href="index.html">How Talos flies<small>The riptide_mpc controller, explained</small></a>
+    <a class="brand" href="index.html">How Talos flies<small>Nonlinear MPC for an AUV, explained</small></a>
     <ol>${chapters
       .map((c) => `<li><a href="${c.href}"${c.href === here ? ' aria-current="page"' : ''}>${c.title}</a>${c.href === here ? '<ul class="toc"></ul>' : ''}</li>`)
       .join('')}</ol>
