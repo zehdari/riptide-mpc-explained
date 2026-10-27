@@ -194,9 +194,15 @@ svg.graph .pulse { fill: var(--accent); }
 .hero .copy p { font-size: 1.2rem; line-height: 1.5; color: var(--ink-2); margin-top: 1rem; max-width: 27rem; }
 .hero .dock { position: absolute; left: clamp(1.2rem, 4vw, 3.5rem); right: clamp(1.2rem, 4vw, 3.5rem); bottom: 1.2rem; display: flex; flex-wrap: wrap; gap: 0.8rem 1.2rem; align-items: flex-end; justify-content: space-between; pointer-events: none; }
 .hero .dock > * { pointer-events: auto; }
-.hero .actions { display: flex; flex-wrap: wrap; gap: 0.45rem; }
-.hero .actions .btn { background: rgba(243, 247, 247, 0.92); backdrop-filter: blur(6px); }
+.hero .actions { display: flex; flex-wrap: wrap; gap: 0.45rem; max-width: min(44rem, 100%); }
+.hero .actions .btn { background: rgba(243, 247, 247, 0.92); backdrop-filter: blur(6px); white-space: nowrap; }
 .hero .actions .btn.primary { background: var(--ink); }
+.hero .actions .btn[aria-expanded='true'] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.hero .attitude { flex-basis: 100%; display: grid; grid-template-columns: repeat(3, auto) 1fr; gap: 0.4rem 1rem; align-items: center; justify-items: start; background: rgba(243, 247, 247, 0.92); backdrop-filter: blur(6px); border-radius: 10px; padding: 0.55rem 0.8rem; font-family: var(--sans); font-size: 0.84rem; color: var(--ink-2); width: fit-content; max-width: 100%; }
+.hero .attitude[hidden] { display: none; }
+.hero .attitude label { display: inline-flex; align-items: center; gap: 0.45rem; }
+.hero .attitude output { min-width: 2.6em; color: var(--ink); font-variant-numeric: tabular-nums; }
+.hero .attitude input { width: 7rem; }
 .hud { background: rgba(243, 247, 247, 0.9); backdrop-filter: blur(6px); border-radius: 10px; padding: 0.7rem 0.9rem; font-family: var(--sans); font-size: 0.78rem; color: var(--ink-2); min-width: 17rem; font-variant-numeric: tabular-nums; }
 .hud .row { display: flex; justify-content: space-between; gap: 1rem; }
 .hud .row b { color: var(--ink); font-weight: 600; }
@@ -217,6 +223,8 @@ svg.graph .pulse { fill: var(--accent); }
   body { font-size: 1.08rem; }
   .hero .copy p { font-size: 1.02rem; }
   .hud { min-width: 0; width: 100%; }
+  .hero .attitude { grid-template-columns: 1fr; width: 100%; }
+  .hero .attitude input { width: 11rem; }
   .hero .copy { top: 3.6rem; }
   table.params { font-size: 0.8rem; }
   table.params th, table.params td { padding-right: 0.5rem; }

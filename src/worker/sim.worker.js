@@ -3,7 +3,7 @@ import { Simulation, makePlantHydro } from '../engine/sim.js';
 import { Mode } from '../engine/mpc.js';
 import { PathPlan } from '../engine/path.js';
 import { pathOptions } from '../engine/talos.js';
-import { yawQuat, twist } from '../engine/math.js';
+import { yawQuat, twist, rpyQuat } from '../engine/math.js';
 
 let sim, reference, running = true, wall0 = 0, sim0 = 0, speed = 1, plannedPoints = null, goal = null;
 
@@ -78,7 +78,7 @@ onmessage = ({ data }) => {
       linear_mode: Mode.POSITION,
       angular_mode: Mode.POSITION,
       position: data.position,
-      orientation: data.yaw === undefined ? reference.orientation : yawQuat(data.yaw),
+      orientation: data.rpy ? rpyQuat(...data.rpy) : data.yaw === undefined ? reference.orientation : yawQuat(data.yaw),
       path: null,
     };
     goal = data.position;

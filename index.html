@@ -17,6 +17,13 @@
     </div>
     <div class="dock">
       <div class="actions">
+        <div class="attitude" id="attitude" hidden>
+          <label>roll <input type="range" data-axis="0" min="-45" max="45" step="1" value="0"><output>0°</output></label>
+          <label>pitch <input type="range" data-axis="1" min="-45" max="45" step="1" value="0"><output>0°</output></label>
+          <label>yaw <input type="range" data-axis="2" min="-180" max="180" step="1" value="0"><output>0°</output></label>
+          <button class="btn" data-act="level">Level out</button>
+        </div>
+        <button class="btn" data-act="attitude" aria-expanded="false" aria-controls="attitude">Attitude</button>
         <button class="btn" data-act="turn">Turn 90°</button>
         <button class="btn" data-act="dive">Dive 0.5 m</button>
         <button class="btn" data-act="rise">Rise 0.5 m</button>

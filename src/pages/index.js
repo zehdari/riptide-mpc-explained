@@ -2,7 +2,6 @@ import { setup, SRC } from '../layout.js';
 import { createScene } from '../viz/scene.js';
 import { Graph } from '../viz/graph.js';
 import { thrusterNames } from '../engine/talos.js';
-import { twist } from '../engine/math.js';
 
 setup();
 
@@ -11,8 +10,8 @@ const canvas = document.getElementById('hero-canvas');
 const scene = createScene(canvas, {
   shiftRight: 0.17,
   onPick: (p) => {
-    const depth = last ? last.position[2] : -1;
-    worker.postMessage({ type: 'goal', position: [p[0], p[1], depth] });
+    const depth = last ? (last.goal || last.refPosition)[2] : -1;
+    worker.postMessage({ type: 'goal', position: [p[0], p[1], depth], rpy: att.map(deg) });
   },
 });
 const worker = new Worker(new URL('../worker/sim.worker.js', import.meta.url), { type: 'module' });
@@ -55,16 +54,44 @@ setInterval(() => {
   document.getElementById('hud-dist').textContent = g ? `${Math.hypot(g[0] - last.position[0], g[1] - last.position[1], g[2] - last.position[2]).toFixed(2)} m` : 'holding';
 }, 250);
 
+// Goal attitude, in degrees (roll, pitch, yaw); the position half of the goal is kept separately.
+const att = [0, 0, 0];
+const attPanel = document.getElementById('attitude');
+const attInputs = [...attPanel.querySelectorAll('input')];
+const deg = (d) => (d * Math.PI) / 180;
+const wrapDeg = (d) => ((((d + 180) % 360) + 360) % 360) - 180;
+const showAttitude = () => attInputs.forEach((i, k) => { i.value = att[k]; i.nextElementSibling.textContent = `${Math.round(att[k])}°`; });
+const goalPosition = () => (last.goal || last.refPosition).slice();
+const sendAttitude = () => worker.postMessage({ type: 'goal', position: goalPosition(), rpy: att.map(deg) });
+let pending = null;
+attInputs.forEach((input) => input.addEventListener('input', () => {
+  if (!last) return;
+  att[+input.dataset.axis] = +input.value;
+  showAttitude();
+  if (!pending) pending = setTimeout(() => { pending = null; sendAttitude(); }, 120);
+}));
+
 document.querySelectorAll('[data-act]').forEach((b) =>
   b.addEventListener('click', () => {
-    if (!last) return;
-    const p = last.position, yaw = twist(last.refOrientation);
     const act = b.dataset.act;
-    if (act === 'turn') worker.postMessage({ type: 'goal', position: last.goal || last.refPosition, yaw: yaw + Math.PI / 2 });
-    if (act === 'dive') worker.postMessage({ type: 'goal', position: [...(last.goal || last.refPosition)].map((v, i) => (i === 2 ? Math.max(-2.5, v - 0.5) : v)) });
-    if (act === 'rise') worker.postMessage({ type: 'goal', position: [...(last.goal || last.refPosition)].map((v, i) => (i === 2 ? Math.min(-0.5, v + 0.5) : v)) });
-    if (act === 'reset') { trail = []; scene.setPlanned([]); worker.postMessage({ type: 'init' }); }
+    if (act === 'attitude') {
+      attPanel.hidden = !attPanel.hidden;
+      b.setAttribute('aria-expanded', String(!attPanel.hidden));
+      return;
+    }
+    if (!last) return;
+    const p = last.position;
+    if (act === 'level') { att[0] = att[1] = 0; showAttitude(); sendAttitude(); }
+    if (act === 'turn') { att[2] = wrapDeg(att[2] + 90); showAttitude(); sendAttitude(); }
+    if (act === 'dive') worker.postMessage({ type: 'goal', position: goalPosition().map((v, i) => (i === 2 ? Math.max(-2.5, v - 0.5) : v)), rpy: att.map(deg) });
+    if (act === 'rise') worker.postMessage({ type: 'goal', position: goalPosition().map((v, i) => (i === 2 ? Math.min(-0.5, v + 0.5) : v)), rpy: att.map(deg) });
+    if (act === 'reset') { trail = []; scene.setPlanned([]); att.fill(0); showAttitude(); worker.postMessage({ type: 'init' }); }
     if (act === 'path') {
+      // The path planner flies level (the port plans yaw only): it starts from the current heading and ends turned around.
+      const yaw = deg(att[2]);
+      att[0] = att[1] = 0;
+      att[2] = wrapDeg(att[2] + 180);
+      showAttitude();
       const c = Math.cos(yaw), s = Math.sin(yaw);
       const local = (x, y) => [p[0] + c * x - s * y, p[1] + s * x + c * y, p[2]];
       worker.postMessage({
