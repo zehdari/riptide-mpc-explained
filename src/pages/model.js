@@ -7,6 +7,7 @@ import { rpyQuat, quatToRpy } from '../engine/math.js';
 
 setup();
 const model = new FossenModel();
+const phone = matchMedia('(max-width: 640px)');
 const mm = (v) => v.map((x) => (x * 1000).toFixed(0)).join(', ');
 
 // ---------- frame tree ----------
@@ -88,15 +89,21 @@ const mm = (v) => v.map((x) => (x * 1000).toFixed(0)).join(', ');
       ['Gravity + buoyancy', '−g(η)', parts.g],
     ];
     const total = names.map((_, i) => cols.reduce((s, c) => s + c[2][i], 0));
+    const narrow = phone.matches;
     const cell = (v, max) => {
       const w = Math.min(100, (Math.abs(v) / max) * 100);
-      return `<td style="text-align:right;position:relative"><span style="position:absolute;right:0;top:20%;bottom:20%;width:${w}%;background:${v >= 0 ? 'rgba(42,120,214,.16)' : 'rgba(235,104,52,.18)'};border-radius:2px"></span><span style="position:relative">${v.toFixed(2)}</span></td>`;
+      return `<td style="text-align:right;position:relative"><span style="position:absolute;right:0;top:20%;bottom:20%;width:${w}%;background:${v >= 0 ? 'rgba(42,120,214,.16)' : 'rgba(235,104,52,.18)'};border-radius:2px"></span><span style="position:relative">${v.toFixed(narrow ? 1 : 2)}</span></td>`;
     };
     const max = (i) => Math.max(1e-6, ...cols.map((c) => Math.abs(c[2][i])), Math.abs(total[i]));
-    table.innerHTML = `<table class="params" style="margin:0"><thead><tr><th></th>${cols.map((c) => `<th style="text-align:right">${c[0]}</th>`).join('')}<th style="text-align:right">Sum</th><th style="text-align:right">Acceleration ν̇</th></tr></thead><tbody>${names
-      .map((n, i) => `<tr><td>${n}</td>${cols.map((c) => cell(c[2][i], max(i))).join('')}${cell(total[i], max(i))}<td style="text-align:right">${dx[7 + i].toFixed(3)} ${i < 3 ? 'm/s²' : 'rad/s²'}</td></tr>`)
-      .join('')}</tbody></table>`;
+    // Phones get short headers and one decimal so all seven columns fit.
+    const heads = narrow ? ['Drag', 'C<sub>RB</sub>', 'C<sub>A</sub>', 'g', 'Sum', 'ν̇'] : [...cols.map((c) => c[0]), 'Sum', 'Acceleration ν̇'];
+    const rowName = (n) => (narrow ? n.split(' ')[1] : n);
+    const accel = (i) => (narrow ? dx[7 + i].toFixed(2) : `${dx[7 + i].toFixed(3)} ${i < 3 ? 'm/s²' : 'rad/s²'}`);
+    table.innerHTML = `<table class="params" style="margin:0"><thead><tr><th></th>${heads.map((h) => `<th style="text-align:right">${h}</th>`).join('')}</tr></thead><tbody>${names
+      .map((n, i) => `<tr><td>${rowName(n)}</td>${cols.map((c) => cell(c[2][i], max(i))).join('')}${cell(total[i], max(i))}<td style="text-align:right">${accel(i)}</td></tr>`)
+      .join('')}</tbody></table>${narrow ? '<p class="eq-note" style="margin:.6rem 0 0">Drag D(ν)ν; C<sub>RB</sub>, C<sub>A</sub>: Coriolis of the body and of the added mass; g: gravity and buoyancy. N (X–Z) and N·m (K–N); ν̇ in m/s² and rad/s².</p>' : ''}`;
   };
+  phone.addEventListener('change', () => update());
   ctl.addEventListener('input', update);
   update();
 }

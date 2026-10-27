@@ -5,6 +5,7 @@ import { hydro } from '../engine/talos.js';
 setup();
 
 // ---------- the precomputed study ----------
+const phone = matchMedia('(max-width: 640px)');
 fetch(`${import.meta.env.BASE_URL}data/sensitivity.json`).then((r) => r.json()).then(({ rows }) => {
   const cols = [
     ['hold_cm', 'Hold: position', 'cm', 'var(--state)'],
@@ -12,10 +13,24 @@ fetch(`${import.meta.env.BASE_URL}data/sensitivity.json`).then((r) => r.json()).
     ['move_cm', 'Move: tracking', 'cm', 'var(--reference)'],
   ];
   const max = Object.fromEntries(cols.map(([k]) => [k, Math.max(...rows.map((r) => r[k]))]));
-  const cell = (v, k, color) => `<td style="text-align:right;position:relative;min-width:6.5rem"><span style="position:absolute;right:3.4rem;top:30%;bottom:30%;width:calc((100% - 3.8rem) * ${(v / max[k]).toFixed(3)});background:${color};border-radius:2px;opacity:.8"></span><span style="position:relative">${v.toFixed(2)}</span></td>`;
-  document.getElementById('sens-table').innerHTML = `<table class="params" style="margin:0"><thead><tr><th>Wrong by</th><th>Comes from</th>${cols.map((c) => `<th style="text-align:right">${c[1]} (${c[2]})</th>`).join('')}</tr></thead><tbody>${rows
-    .map((r) => `<tr><td>${r.label}</td><td>${r.source}</td>${cols.map(([k, , , c]) => cell(r[k], k, c)).join('')}</tr>`)
-    .join('')}</tbody></table>`;
+  const host = document.getElementById('sens-table');
+  const table = () => {
+    const cell = (v, k, color) => `<td style="text-align:right;position:relative;min-width:6.5rem"><span style="position:absolute;right:3.4rem;top:30%;bottom:30%;width:calc((100% - 3.8rem) * ${(v / max[k]).toFixed(3)});background:${color};border-radius:2px;opacity:.8"></span><span style="position:relative">${v.toFixed(2)}</span></td>`;
+    return `<table class="params" style="margin:0"><thead><tr><th>Wrong by</th><th>Comes from</th>${cols.map((c) => `<th style="text-align:right">${c[1]} (${c[2]})</th>`).join('')}</tr></thead><tbody>${rows
+      .map((r) => `<tr><td>${r.label}</td><td>${r.source}</td>${cols.map(([k, , , c]) => cell(r[k], k, c)).join('')}</tr>`)
+      .join('')}</tbody></table>`;
+  };
+  // Phones: one card per case, its three results as labelled bars.
+  const cards = () => rows
+    .map((r) => `<div style="padding:.7rem 0;border-bottom:1px solid var(--rule);font-family:var(--sans)">
+      <div style="font-weight:600;font-size:.92rem">${r.label}</div>
+      <div style="font-size:.78rem;color:var(--ink-2);margin-bottom:.35rem">${r.source}</div>
+      ${cols.map(([k, label, unit, color]) => `<div style="display:grid;grid-template-columns:7.2rem 1fr 3.6rem;align-items:center;gap:.5rem;font-size:.8rem;color:var(--ink-2)"><span>${label}</span><span style="height:8px"><span style="display:block;height:100%;width:${((100 * r[k]) / max[k]).toFixed(1)}%;background:${color};border-radius:2px;opacity:.8"></span></span><span style="text-align:right;color:var(--ink);font-variant-numeric:tabular-nums">${r[k].toFixed(2)} ${unit}</span></div>`).join('')}
+    </div>`)
+    .join('');
+  const draw = () => (host.innerHTML = phone.matches ? cards() : table());
+  phone.addEventListener('change', draw);
+  draw();
 });
 
 // ---------- the live lab ----------

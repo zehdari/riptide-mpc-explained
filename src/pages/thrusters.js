@@ -43,9 +43,15 @@ const dofs = ['surge X', 'sway Y', 'heave Z', 'roll K', 'pitch M', 'yaw N'];
   host.appendChild(note);
 
   const tm = document.getElementById('tmatrix');
-  tm.innerHTML = `<table class="params" style="margin:0"><thead><tr><th>T</th>${thrusterNames.map((n) => `<th style="text-align:right">${n}</th>`).join('')}</tr></thead><tbody>${T.map(
-    (row, j) => `<tr><td>${dofs[j]}</td>${row.map((v) => `<td style="text-align:right;color:${Math.abs(v) < 0.05 ? 'var(--muted)' : 'var(--ink)'}">${v.toFixed(3)}</td>`).join('')}</tr>`
-  ).join('')}</tbody></table>`;
+  const phone = matchMedia('(max-width: 640px)');
+  const drawT = () => {
+    const narrow = phone.matches; // phones: axis letters and two decimals so all eight columns fit
+    tm.innerHTML = `<table class="params" style="margin:0;${narrow ? 'font-size:.72rem' : ''}"><thead><tr><th>T</th>${thrusterNames.map((n) => `<th style="text-align:right">${n}</th>`).join('')}</tr></thead><tbody>${T.map(
+      (row, j) => `<tr><td>${narrow ? dofs[j].split(' ')[1] : dofs[j]}</td>${row.map((v) => `<td style="text-align:right;${narrow ? 'padding-right:.3rem;' : ''}color:${Math.abs(v) < 0.05 ? 'var(--muted)' : 'var(--ink)'}">${v.toFixed(narrow ? 2 : 3)}</td>`).join('')}</tr>`
+    ).join('')}</tbody></table>`;
+  };
+  phone.addEventListener('change', drawT);
+  drawT();
 }
 
 // ---------- null space ----------
