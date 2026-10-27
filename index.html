@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How Talos flies: the riptide_mpc controller, explained</title>
+<meta name="description" content="An interactive walkthrough of riptide_mpc, the model predictive controller that flies UWRT's Talos AUV: Fossen dynamics, thruster allocation, S-curve references, the condensed QP, and how to build your own.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <section class="hero" aria-label="Talos flying under the MPC, live">
+    <canvas id="hero-canvas" aria-label="3D view of Talos in a pool. Tap the floor to send it somewhere."></canvas>
+    <div class="copy">
+      <h1>How Talos flies</h1>
+      <p>This is the model predictive controller that flies the Underwater Robotics Team's AUV, running live in your browser. Tap the pool floor and watch it plan 1.5 seconds ahead.</p>
+    </div>
+    <div class="dock">
+      <div class="actions">
+        <button class="btn" data-act="turn">Turn 90°</button>
+        <button class="btn" data-act="dive">Dive 0.5 m</button>
+        <button class="btn" data-act="rise">Rise 0.5 m</button>
+        <button class="btn primary" data-act="path">Fly a path</button>
+        <button class="btn" data-act="reset">Reset</button>
+      </div>
+      <div class="hud" aria-live="off">
+        <div class="row"><span>Solve time</span><b id="hud-solve">–</b></div>
+        <div class="row"><span>Sim speed</span><b id="hud-rtf">–</b></div>
+        <div class="row"><span>Distance to goal</span><b id="hud-dist">–</b></div>
+        <div class="bars" id="hud-bars"></div>
+        <div class="names" id="hud-names"></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="page-head">
+    <div class="kicker">riptide_mpc, chapter by chapter</div>
+    <p class="lede" style="margin-top:0">The green line ahead of Talos is the controller's prediction. Every 50 ms it picks thrust for all eight thrusters over the next 1.5 seconds, sends the first 50 ms of it, and starts over. Everything here runs the same algorithm as the C++ on the robot.</p>
+  </div>
+
+  <article>
+    <div class="prose">
+      <p>Talos is the team's competition AUV: a 34 kg frame with eight thrusters, a DVL, an IMU, a fibre-optic gyro and a depth sensor. Its controller lives in <a href="https://github.com/osu-uwrt/riptide_control/tree/mpc/riptide_mpc"><code>riptide_control/riptide_mpc</code></a>. This site explains that controller completely: the physics it predicts with, how it decides where the robot should be, how it turns that into an optimization it can solve in a few milliseconds, and how it copes with a model that is never quite right.</p>
+      <p>If you are building an MPC for your own vehicle, the last chapter is a recipe. The chapters before it are the reasons behind each step.</p>
+
+      <h2 id="loop">The loop, one tick at a time</h2>
+      <p>Each piece of the controller is a box below. Hover or tap one to see what it does and where it lives in the code. The dots show data moving through one 50 ms control tick.</p>
+    </div>
+
+    <figure class="fig">
+      <div class="panel" id="loop-graph"></div>
+      <div class="panel" id="loop-info" style="margin-top:0.6rem;min-height:5.2rem;font-family:var(--sans);font-size:0.92rem;line-height:1.5"></div>
+      <figcaption><b>The control loop.</b> Solid arrows run every tick (20 Hz). Dashed arrows are slower: the EKF anchors x, y and heading, and the learned disturbance feeds back into the model the MPC predicts with.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <p>In words, a tick goes like this:</p>
+      <ol>
+        <li><strong>Estimate.</strong> The state estimator has been propagating the same Fossen model between sensor messages, correcting with the gyros, DVL and depth sensor. It hands the MPC a 13-number state: position, attitude quaternion, body velocity and body rates.</li>
+        <li><strong>Look ahead through the delay.</strong> Thrust takes 30 ms to start responding, and commands already sent are still in flight. The MPC rolls those known commands forward so it plans from where Talos will be when the new command lands.</li>
+        <li><strong>Move the reference.</strong> Setpoints are never chased directly. A jerk-limited profile, or a path planned as one smooth curve, moves the reference toward the goal at speeds the vehicle can actually follow.</li>
+        <li><strong>Predict and linearize.</strong> With last tick's plan shifted one step as a first guess, the model is rolled out 30 stages of 50 ms. Each stage is linearized by finite differences.</li>
+        <li><strong>Solve a QP.</strong> The linearized problem is a quadratic program in 240 numbers (30 stages × 8 thrusters) with box bounds of ±24 N. A projected Newton method solves it, usually in one or two iterations.</li>
+        <li><strong>Send the first 50 ms.</strong> Only the first stage's thrust is published, scaled to the 73 N power budget if needed, and converted to propeller RPM. Next tick, it all happens again.</li>
+      </ol>
+
+      <h2 id="why">Why an MPC</h2>
+      <p>An AUV has a few properties that make a predictive controller worth its cost. The thrusters are coupled: no single thruster moves Talos along one axis, so every motion is a blend of all eight. Thrust is bounded, per thruster and in total, and a controller that knows the bounds can plan around them instead of saturating. Thrust is late: 30 ms of delay plus an 80 ms spin-up lag is two control ticks before a command has mostly arrived. And the physics is well understood: the Fossen model of a rigid body in water predicts Talos's motion over a couple of seconds well enough to plan with.</p>
+      <p>The price is computation and a model you have to identify. riptide_mpc pays the first with a careful formulation (a small dense QP, one Newton step of the nonlinear problem per tick) and the second with pool identification runs and an online disturbance estimate that soaks up what the model gets wrong.</p>
+
+      <h2 id="files">Where things live in the code</h2>
+      <p>Everything is in <code>riptide_mpc</code> on the <code>mpc</code> branch. The chapters link to exact files as they go.</p>
+      <table class="params">
+        <thead><tr><th>File</th><th>What it does</th><th>Chapter</th></tr></thead>
+        <tbody>
+          <tr><td><code>marine_dynamics.cpp</code></td><td>Fossen rigid body in water: mass, Coriolis, damping, buoyancy. Shared with the simulator.</td><td><a href="model.html">1</a></td></tr>
+          <tr><td><code>fossen_model.cpp</code></td><td>Builds the model from the vehicle and model YAML files, thruster matrix, RK4 step, base_link ↔ COM.</td><td><a href="model.html">1</a>, <a href="thrusters.html">2</a></td></tr>
+          <tr><td><code>thruster_dynamics.cpp</code></td><td>Thruster delay queue, rise/fall lag, slew, limits.</td><td><a href="thrusters.html">2</a></td></tr>
+          <tr><td><code>motion_profile.cpp</code></td><td>Jerk-limited S-curve reference for position and attitude.</td><td><a href="reference.html">3</a></td></tr>
+          <tr><td><code>path_plan.cpp</code></td><td>Lines, arcs and rounded corners as one curve with a speed envelope.</td><td><a href="reference.html">3</a></td></tr>
+          <tr><td><code>mpc.cpp</code></td><td>The controller: delay compensation, feedforward, linearization, condensed QP, governor.</td><td><a href="mpc.html">4</a>, <a href="solver.html">5</a></td></tr>
+          <tr><td><code>box_qp.cpp</code></td><td>Projected Newton solver for the box-constrained QP.</td><td><a href="solver.html">5</a></td></tr>
+          <tr><td><code>state_estimator.cpp</code></td><td>Model-based observer and the offset-free disturbance estimate.</td><td><a href="estimation.html">6</a></td></tr>
+          <tr><td><code>settle_trust.hpp</code></td><td>The "has it settled?" signal autonomy waits on.</td><td><a href="estimation.html">6</a></td></tr>
+          <tr><td><code>identification.cpp</code>, <code>pool_identify_node.cpp</code></td><td>Flies identification maneuvers in the pool and fits the model.</td><td><a href="build.html">7</a></td></tr>
+          <tr><td><code>mpc_controller_node.cpp</code></td><td>The ROS 2 node: topics, the 20 Hz tick, FollowPath action, RPM output.</td><td><a href="estimation.html">6</a></td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="port">About the browser version</h2>
+      <p>The simulations on this site run a line-by-line JavaScript port of <code>marine_dynamics</code>, <code>fossen_model</code>, <code>thruster_dynamics</code>, <code>motion_profile</code>, <code>path_plan</code>, <code>mpc</code> and <code>box_qp</code>, with Talos's identified model and the controller settings from <code>config/mpc.yaml</code>. Two differences: the browser predicts with a 10 ms integration step instead of 2 ms so it keeps up on a phone (the trajectories agree to well under a millimetre), and the path planner port leaves out roll/pitch blending, spins and moving look targets. The simulated "pool" is the same Fossen model, so here the controller's model is exact unless a demo says otherwise.</p>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/index.js"></script>
+</body>
+</html>

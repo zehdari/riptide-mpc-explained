@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thrusters and allocation · How Talos flies</title>
+<meta name="description" content="Talos's eight thrusters as a 6×8 thruster matrix, its null space, why the MPC optimizes thrust directly instead of allocating, and the thruster delay and lag the controller models.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 2</div>
+    <h1>Thrusters and allocation</h1>
+    <p class="lede">Eight thrusters, six ways to move. How thrust becomes a wrench, which thrust patterns do nothing at all, and why a thruster that answers 30 ms late has to be part of the model.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="matrix">From eight forces to one wrench</h2>
+      <p>Each thruster <span class="m">i</span> sits at a position <span class="m">r_i</span> relative to the COM and pushes along a unit axis <span class="m">d_i</span>. A force <span class="m">f_i</span> along that axis is a force <span class="m">f_i d_i</span> plus a moment <span class="m">r_i \times f_i d_i</span> about the COM. Stack the columns and the whole propulsion system is one linear map, the <strong>thruster matrix</strong>:</p>
+      <div class="M">\boldsymbol\tau_{\text{thrust}} = \mathbf T f, \qquad \mathbf T = \begin{bmatrix} d_1 & d_2 & \cdots & d_8 \\ r_1 \times d_1 & r_2 \times d_2 & \cdots & r_8 \times d_8 \end{bmatrix} \in \R^{6\times 8}</div>
+      <p>The poses come from the vehicle YAML (<code>riptide_descriptions/config/talos.yaml</code>), the same file the simulator and URDF use. <code>FossenModel::fromNodes</code> subtracts the COM from each position and rotates the x axis by each thruster's roll-pitch-yaw to get <span class="m">d_i</span>. On Talos, four thrusters at the corners point straight forward, and four are angled at 45° so each pushes sideways and vertically at once.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel" id="bipartite"></div>
+      <div class="panel" id="tmatrix" style="margin-top:.6rem"></div>
+      <figcaption><b>The thruster matrix as a graph.</b> An edge joins a thruster to each axis it affects, thicker for a larger entry of T (moment rows scaled ×2.5 to compare with forces), orange for positive and blue for negative. Hover an axis to see who can move Talos that way, or a thruster to see everything it does.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Read the graph from the axes up. Surge is only the four forward thrusters; sway and heave are only the four angled ones, mixed with opposite signs; yaw is the forward thrusters pushing differentially port against starboard. No axis belongs to one thruster, and no thruster serves one axis. That coupling is the first reason to let an optimizer pick the thrusts.</p>
+
+      <h2 id="nullspace">Thrust that does nothing</h2>
+      <p><span class="m">\mathbf T</span> is 6×8 with rank 6, so it has a two-dimensional <strong>null space</strong>: thrust patterns with <span class="m">\mathbf T f = 0</span>. Spin the thrusters in one of these patterns and Talos does not move at all. Any wrench can be produced by infinitely many thrust vectors, differing by null-space components.</p>
+    </div>
+    <figure class="fig narrow">
+      <div class="panel" id="null-chart"></div>
+      <figcaption><b>A basis of the null space</b>, computed from T in your browser (normalized). Pattern A pushes the forward thrusters in diagonal pairs against each other (upper starboard and lower port forward, the other two back). Pattern B runs all four angled thrusters equally: their sideways, vertical and rolling pushes cancel.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>The null space is useful. <code>pool_identify</code> adds a null-space bias to the commands while it identifies the thrusters, so thrusters can run at known levels while the MPC still holds the vehicle still and tracking costs nothing. <code>hardware.spin_bias</code> exists for the same reason: the team's ESCs take around 0.8 s to start a motor from rest, so keeping every thruster spinning gently in a zero-wrench pattern avoids that dead time.</p>
+
+      <h2 id="allocation">Allocation, and why the MPC skips it</h2>
+      <p>A classical controller computes a desired wrench and then <em>allocates</em> it to thrusters, usually with the minimum-norm solution <span class="m">f = \mathbf T^{+}\boldsymbol\tau = \mathbf T^\top(\mathbf T\mathbf T^\top)^{-1}\boldsymbol\tau</span>. riptide_mpc uses exactly this inside its feedforward (<code>MpcController::allocate</code>, via a complete orthogonal decomposition), but not for control. Try asking for a large wrench:</p>
+    </div>
+    <figure class="fig">
+      <div class="panel flush" style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr)" id="alloc-grid">
+        <div style="position:relative;min-height:360px;background:linear-gradient(180deg,#e3f1f3,var(--water))"><canvas id="alloc-canvas" style="width:100%;height:100%;display:block;position:absolute;inset:0"></canvas></div>
+        <div style="padding:1rem 1.1rem">
+          <div class="controls" id="alloc-controls" style="display:grid;grid-template-columns:1fr;gap:.25rem"></div>
+          <div class="seg" role="group" aria-label="Allocation method" style="margin:.4rem 0 .6rem"><button aria-pressed="true" data-m="pinv">Pseudo-inverse, clipped</button><button aria-pressed="false" data-m="qp">Box-constrained least squares</button></div>
+          <div id="alloc-bars"></div>
+          <div id="alloc-result" style="font-family:var(--sans);font-size:.84rem;color:var(--ink-2);margin-top:.4rem"></div>
+        </div>
+      </div>
+      <figcaption><b>Allocating a wrench.</b> Arrows on the model show each thruster's force. Past ±24 N the pseudo-inverse solution has to be clipped, and the clipped thrust no longer produces the wrench you asked for, not even its direction. The bounded least-squares answer (the same projected Newton solver the MPC uses) gets as close as the limits allow.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>The MPC never forms a desired wrench. Its decision variables are the eight thruster commands themselves, over the whole horizon, with the ±24 N limits as box constraints of the QP. Saturation is handled where it belongs, by the optimizer, which trades position error against attitude error knowing exactly what the thrusters can do. It is the same reason the solver can lean on the null space when a thruster is pinned.</p>
+      <p>Two more limits sit outside the QP. The command is scaled down as a whole if the sum of absolute forces exceeds the 73 N power budget (<code>limitTotalThrust</code>), which keeps the wrench's direction. And identification can pin individual thrusters to fixed values; the MPC then sets that stage's bounds equal and optimizes the rest.</p>
+
+      <h2 id="dynamics">Thrust is late</h2>
+      <p>A thruster does not produce the force it was asked for the instant it is asked. <a href="https://github.com/osu-uwrt/riptide_control/blob/mpc/riptide_mpc/src/thruster_dynamics.cpp"><code>thruster_dynamics.cpp</code></a> models three effects, per thruster:</p>
+      <ul>
+        <li>A <strong>transport delay</strong> of 30 ms: every command waits in a queue before the motor sees it (CAN, the ESC, the motor controller).</li>
+        <li>A <strong>first-order lag</strong> toward the commanded force, with time constant 80 ms when spinning up and 60 ms when spinning down: <span class="m">f \leftarrow f + (f_{\text{target}} - f)(1 - e^{-\Delta t/\tau})</span>.</li>
+        <li>A <strong>slew limit</strong> of 300 N/s and the ±24 N saturation.</li>
+      </ul>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="controls">
+          <label>delay <input type="range" id="td-delay" min="0" max="0.2" step="0.005" value="0.03"><output id="td-delay-o"></output></label>
+          <label>rise τ <input type="range" id="td-rise" min="0.01" max="0.3" step="0.005" value="0.08"><output id="td-rise-o"></output></label>
+          <label>fall τ <input type="range" id="td-fall" min="0.01" max="0.3" step="0.005" value="0.06"><output id="td-fall-o"></output></label>
+        </div>
+        <div id="td-chart"></div>
+      </div>
+      <figcaption><b>One thruster's response</b> to a command that steps to 15 N, then reverses to −10 N, sent every 50 ms like the real controller. The realized force is what pushes the robot. By the end of the first 50 ms tick it has only reached about a quarter of the command.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Because the lag is a state, the MPC carries it in its own state vector: the 13 body states plus the 8 realized thruster forces. That is why the controller's linearized state has dimension 20 (12 on the tangent space plus 8), and why it can plan a command that leads the force it actually wants. It also keeps a replica of the delay queue (<code>MpcController::actuator_</code>), fed every published command, so it always knows what is still in flight. Chapter 4 shows how it uses that to plan through the delay.</p>
+      <div class="pool-note">
+        <b>From the pool</b>
+        <p>The model also has an optional slow time constant for a motor that is reversing or starting from rest (sensorless ESCs take 0.5–0.8 s there). It is off by default, because the simulator's copy has no such term and the two must stay identical. On the real robot, slow starts from 0 rpm showed up in identification as extra surge inertia: the fit read the dead time as mass.</p>
+      </div>
+
+      <h2 id="rpm">From force to RPM</h2>
+      <p>The ESCs take RPM, not newtons. The model file gives a propeller law per direction, <span class="m">|F| = K_T\,\rho D^4 (n/60)^2</span> with a thrust coefficient that grows slightly with speed, <span class="m">K_T = a + b\,n</span>. The node inverts it with a few Newton iterations (<code>HardwareConfig::forceToRpm</code>). Reverse thrust is weaker: the propeller is shaped for forward.</p>
+    </div>
+    <figure class="fig narrow">
+      <div class="panel" id="rpm-chart"></div>
+      <figcaption><b>RPM needed for a given thrust</b>, from Talos's fitted coefficients (D = 76 mm). 24 N takes about 2,450 rpm forward and 2,740 rpm in reverse.</figcaption>
+    </figure>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/thrusters.js"></script>
+</body>
+</html>

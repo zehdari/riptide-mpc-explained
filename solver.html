@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Solving it every 50 ms · How Talos flies</title>
+<meta name="description" content="How riptide_mpc solves its nonlinear MPC in a few milliseconds: single shooting, finite-difference Jacobians on the quaternion manifold, condensing into a dense QP, projected Newton for box constraints, and real-time iteration with warm starts.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 5</div>
+    <h1>Solving it every 50 ms</h1>
+    <p class="lede">The problem of Chapter 4 is nonlinear and has 240 unknowns. riptide_mpc solves it with one Gauss–Newton step per tick, on a QP small enough to factor densely, warm-started from the last plan. In C++ that takes about 11 ms.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <p>Here is the whole of <code>MpcController::compute</code> after the reference is built, in order. Each step gets a section below.</p>
+      <ol>
+        <li><strong>Warm start:</strong> shift last tick's 30 commands one stage earlier.</li>
+        <li><strong>Roll out:</strong> integrate the Fossen model through all 30 stages with those commands (2 ms steps).</li>
+        <li><strong>Linearize:</strong> at each stage, finite-difference the stage map on the state manifold to get <span class="m">A_k</span>, <span class="m">B_k</span>, and the error Jacobian <span class="m">C_k</span>.</li>
+        <li><strong>Condense:</strong> chain them into the sensitivity of every predicted state to every command, and build a dense QP in the 240 command changes.</li>
+        <li><strong>Solve:</strong> projected Newton on the box-constrained QP.</li>
+        <li><strong>Apply:</strong> update the commands, publish the first eight.</li>
+      </ol>
+
+      <h2 id="manifold">Perturbing a quaternion</h2>
+      <p>Linearizing means asking how the outcome changes when the state changes a little. For position and velocity, "a little" is just adding a small vector. For attitude it is not: a unit quaternion has four numbers but three degrees of freedom, and adding to it leaves the unit sphere. riptide_mpc perturbs on the manifold instead, with two operators:</p>
+      <div class="M">x \boxplus \delta = \big(p + \delta_p,\ \ q \otimes \operatorname{Exp}(\delta_\theta),\ \ v + \delta_v,\ \ \omega + \delta_\omega,\ \ f + \delta_f\big)</div>
+      <div class="M">a \boxminus b = \big(p_a - p_b,\ \ \operatorname{Log}(q_b^{-1} \otimes q_a),\ \ v_a - v_b,\ \ \omega_a - \omega_b,\ \ f_a - f_b\big)</div>
+      <p><span class="m">\operatorname{Exp}</span> turns a rotation vector into a quaternion and <span class="m">\operatorname{Log}</span> does the reverse; the perturbation <span class="m">\delta_\theta</span> is a small rotation in the body frame. With these, the state's tangent space has 3 + 3 + 3 + 3 + 8 = 20 dimensions, every perturbation is a valid state, and the linear algebra below never has to know about quaternions.</p>
+    </div>
+    <figure class="fig narrow">
+      <div class="panel" id="manifold-fig"></div>
+      <figcaption><b>The idea in one dimension down.</b> Attitudes live on a curved surface (here a circle). Adding a vector to a point leaves the surface; <span class="m">\boxplus</span> moves along it by the tangent vector instead, and <span class="m">\boxminus</span> measures the tangent vector between two points. Drag the orange point.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="jacobians">Jacobians by finite differences</h2>
+      <p>Let <span class="m">F(x, u)</span> be one 50 ms stage. Around the nominal rollout <span class="m">(\bar x_k, \bar u_k)</span>, the linear model is</p>
+      <div class="M">F(\bar x_k \boxplus \delta x,\ \bar u_k + \delta u) \boxminus F(\bar x_k, \bar u_k) \;\approx\; A_k\, \delta x + B_k\, \delta u</div>
+      <p class="eq-note">A<sub>k</sub> is 20 × 20 (state to state), B<sub>k</sub> is 20 × 8 (commands to state).</p>
+      <p>riptide_mpc gets <span class="m">A_k</span> and <span class="m">B_k</span> column by column: perturb one coordinate by <span class="m">\varepsilon = 10^{-6}</span>, run the stage, take the difference. That is 20 + 8 = 28 extra stage simulations per stage, 840 per tick. They use a coarse model (two 25 ms steps per stage, no deadband or saturation in the thruster target, so derivatives are smooth), which makes them cheap. The nominal rollout and the published prediction use the fine 2 ms step.</p>
+      <p>Finite differences are crude next to automatic differentiation, but they have a decisive advantage here: the Jacobian is of <em>exactly</em> the code that runs, including the thruster lag, the submergence factors, the learned disturbance and the RK4 scheme, with no second implementation to keep in sync.</p>
+      <p>The error vector <span class="m">y_k</span> of Chapter 4 is linearized the same way, giving <span class="m">C_k = \partial y_k / \partial x \in \R^{12\times 20}</span> at the end of each stage.</p>
+
+      <h2 id="condensing">Condensing: from a chain to a dense QP</h2>
+      <p>Stack all command changes into <span class="m">\delta U \in \R^{240}</span>. The change in predicted state at the end of stage <span class="m">k</span> is linear in them, <span class="m">\delta x_{k+1} = P_{k+1}\, \delta U</span>, with the sensitivity matrices built by one forward pass:</p>
+      <div class="M">P_0 = 0, \qquad P_{k+1} = A_k P_k + \begin{bmatrix} 0 & \cdots & 0 & \underbrace{B_k}_{\text{columns of } u_k} & 0 & \cdots & 0 \end{bmatrix}</div>
+      <p>By causality <span class="m">P_{k+1}</span> is zero in the columns of every command after <span class="m">u_k</span>, and the code only ever multiplies its nonzero left part. Linearizing every error, <span class="m">y_k(U + \delta U) \approx y_k + C_k P_k \delta U = y_k + M_k \delta U</span>, turns the tracking cost into a quadratic in <span class="m">\delta U</span>. This is <strong>Gauss–Newton</strong>: second derivatives of the dynamics are dropped, so the Hessian is a sum of squares, always positive semidefinite, and cheap.</p>
+      <div class="M">\begin{aligned} H &= \textstyle\sum_{k} w_k M_k^\top Q M_k + r I + r_\Delta D^\top D \\ g &= \textstyle\sum_{k} w_k M_k^\top Q\, y_k + r (U - U^{\text{ff}}) + r_\Delta D^\top D\, (U - U^{\text{ff}}) \end{aligned}</div>
+      <p>where <span class="m">D</span> takes differences between consecutive stages (the smoothness term, tridiagonal in blocks). The QP for the step is</p>
+      <div class="M">\min_{\delta U}\ \tfrac12\, \delta U^\top H\, \delta U + g^\top \delta U \qquad \text{s.t.}\qquad -24 - U \le \delta U \le 24 - U</div>
+      <p>Below is the actual <span class="m">H</span> from one tick of the browser controller, while Talos moves. Every entry couples two commands; it is dense because, after condensing, every command influences every later stage.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="controls"><button class="btn" id="h-run">Compute a new tick</button><span id="h-info"></span></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem" id="h-grid"></div>
+      </div>
+      <figcaption><b>The condensed Hessian, 240 × 240</b> (left; magnitude on a log scale, darker is larger) and one row of it (right), the coupling of thruster VUS at stage 0 to every other command. Blocks along the diagonal are stages; inside each 8 × 8 block, thrusters that move the same axes couple strongly. Couplings fade toward later stages, which affect fewer costs.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Why condense instead of keeping the states as variables (a sparse QP with 30 × 20 more unknowns)? For a horizon of 30 and only eight inputs, the dense problem is small: a 240 × 240 Cholesky factorization is about 4.6 million multiply-adds, a fraction of a millisecond. Sparse solvers win when horizons are long or inputs many; here, dense and simple wins, and needs no external solver library.</p>
+
+      <h2 id="qp">Box constraints: projected Newton</h2>
+      <p>The only constraints left are bounds on each variable. <a href="https://github.com/osu-uwrt/riptide_control/blob/mpc/riptide_mpc/src/box_qp.cpp"><code>box_qp.cpp</code></a> uses Bertsekas's projected Newton method (1982), which exploits that structure:</p>
+      <ol>
+        <li>Compute the gradient <span class="m">Hx + g</span>. A variable is <em>bound</em> if it sits on a limit and the gradient pushes it further out; the rest are <em>free</em>.</li>
+        <li>If the free gradient is below <span class="m">10^{-8}</span>, stop: that is the optimality condition for a box QP.</li>
+        <li>Solve the Newton system on the free variables only, <span class="m">H_{ff}\, d_f = -\nabla_f</span>, with a Cholesky factorization.</li>
+        <li>Step <span class="m">x \leftarrow \Pi(x + \alpha d)</span>, projecting back onto the box, halving <span class="m">\alpha</span> until the projected Armijo condition holds.</li>
+      </ol>
+      <p>When no bound is active, step 3 is the exact minimizer and the solver stops after one iteration. When thrusters saturate it typically needs two to four, occasionally more than ten.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="controls">
+          <label>coupling <input type="range" id="qp-rot" min="0" max="180" value="35"><output id="qp-rot-o"></output></label>
+          <label>conditioning <input type="range" id="qp-cond" min="1" max="12" step="0.5" value="5"><output id="qp-cond-o"></output></label>
+          <span>Drag the cross (the unconstrained minimum) and the dot (the warm start).</span>
+        </div>
+        <div id="qp-fig"></div>
+      </div>
+      <figcaption><b>Projected Newton in two variables</b>, using the same solver code. The square is the ±24 N box, the ellipses are cost contours. When the unconstrained minimum is inside the box, one Newton step lands on it. Outside, each iteration fixes the variables that are pushed into a wall and takes a Newton step in the rest.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="rti">One step per tick: real-time iteration</h2>
+      <p>A full nonlinear solve would repeat roll-out, linearize, solve until the plan stops changing. riptide_mpc does it once (<code>sqp_iterations: 1</code>), then publishes. This is the <strong>real-time iteration</strong> scheme of Diehl, Bock and Schlöder (2005), and it works because consecutive problems are nearly the same: the last plan, shifted one stage, is already close to optimal for the new one, so a single Newton step from it is close to converged. Each tick refines the plan while the plan itself moves forward in time; the optimization and the system converge together.</p>
+      <p>The warm start is a shift:</p>
+      <pre><code><span class="c">// mpc.cpp: shift the previous solution by one interval (the last stage repeats)</span>
+warm_.head(nU - nu_) = warm_.tail(nU - nu_).eval();
+VectorXd U = warm_.cwiseMax(lb_).cwiseMin(ub_);</code></pre>
+      <p>and on the very first tick, or after a reset, the plan starts from the feedforward <span class="m">U^{\text{ff}}</span>, which is already a good guess because it is the thrust that would track the reference exactly if the model were linear.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div class="cols" id="rti-charts"></div></div>
+      <figcaption><b>Solver effort.</b> Left: solve time per tick of the C++ controller on Cam-PC over the 7.2 m path in Nereus (median 11 ms; the controller has 50 ms). Right: QP iterations per tick in the browser port during the hard 8 m surge from Chapter 3, where thrusters run into their limits. While nothing saturates, one iteration is exact (every tick of the path needed only one); with many active bounds it takes up to 17.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="cost">Where the time goes</h2>
+      <table class="params">
+        <thead><tr><th>Step</th><th>Work per tick</th></tr></thead>
+        <tbody>
+          <tr><td>Delay roll-out</td><td>15 steps of the model</td></tr>
+          <tr><td>Reference samples</td><td>30 stages of the profile (2 ms substeps), plus 30 feedforward inverse-dynamics evaluations</td></tr>
+          <tr><td>Nominal roll-out</td><td>30 stages × 25 fine RK4 steps = 750 steps</td></tr>
+          <tr><td>Jacobians</td><td>30 stages × 29 coarse stage runs × 2 steps = 1,740 steps</td></tr>
+          <tr><td>Sensitivities and Hessian</td><td><span class="m">P</span> update 20 × 20 × (8k); <span class="m">H \mathrel{+}= M^\top Q M</span> over up to 240 × 240</td></tr>
+          <tr><td>QP</td><td>One or a few 240 × 240 Cholesky solves</td></tr>
+          <tr><td>Published prediction</td><td>Another 750 fine steps (for the viewer and logs)</td></tr>
+        </tbody>
+      </table>
+      <p>Each model step is four evaluations of the Fossen derivative, a few thousand floating-point operations; a tick is a few tens of millions. That is about 11 ms (median) in C++ with Eigen on a desktop CPU, and the browser port manages 20–50 ms in JavaScript. The node publishes every solve time on <code>controller/mpc/solve_time_ms</code> and warns if one takes longer than the 50 ms control period.</p>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/solver.js"></script>
+</body>
+</html>

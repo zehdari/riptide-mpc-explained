@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Build your own · How Talos flies</title>
+<meta name="description" content="A step-by-step recipe for building a model predictive controller for an AUV, following riptide_mpc: model, thrusters, identification, reference, optimization, solver, estimation, testing, with lessons from the pool and Nereus results.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 7</div>
+    <h1>Build your own</h1>
+    <p class="lede">Everything in the previous chapters, as a recipe for your own vehicle: the order to build it in, a whole control tick in forty lines, how to identify the model in a pool, and what the pool taught us.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="recipe">The recipe</h2>
+      <p>The order matters. Each step gives the next one something it can trust.</p>
+      <ol>
+        <li><strong>Write the model once, and share it.</strong> Implement the Fossen equation (Chapter 1) as a plain function of state and thrust, with an RK4 step. Use the same code in your simulator and your controller, and test that they agree. Every later bug is easier to find when the controller's model is known to be the plant in sim.</li>
+        <li><strong>Get thrust right first.</strong> Measure each thruster on a load cell (force against RPM, both directions), take positions and axes from CAD, build the thruster matrix, and model the delay and lag (Chapter 2). Trust these numbers: identification will attribute everything else to the hydrodynamics.</li>
+        <li><strong>Weigh it wet.</strong> Mass and COM from a scale, in water if you can. Inertia from CAD is fine.</li>
+        <li><strong>Identify the rest in the pool</strong> (below): buoyancy and COB, drag, added mass. Start conservative; a model that is a little wrong is what the disturbance estimate is for.</li>
+        <li><strong>Make a reference generator</strong> before tuning anything: a jerk-limited profile with limits well inside what the thrusters can do (Chapter 3). Add a path planner when autonomy needs to string moves together.</li>
+        <li><strong>Write down the optimal control problem</strong> (Chapter 4): errors on the manifold, diagonal weights with heavy roll and pitch, effort and smoothness about an inverse-dynamics feedforward, box bounds on thrust.</li>
+        <li><strong>Solve it the simple way</strong> (Chapter 5): single shooting, finite-difference Jacobians on the manifold, condense, projected Newton, one iteration per tick, warm-started by shifting. Measure the solve time on the real computer before you go further.</li>
+        <li><strong>Plan through the delay</strong> with a replica of the thrusters fed every command you publish, and keep the reference on the same clock.</li>
+        <li><strong>Close the loop with your own estimator</strong> (Chapter 6): the same model, fast sensors applied raw, slow references blended, and a learned disturbance wrench fed into the prediction.</li>
+        <li><strong>Add the safety rails</strong>: a reference governor, re-seeding when the vehicle falls far behind, zero thrust and a cleared warm start when killed or when odometry goes stale, a settle signal for autonomy.</li>
+        <li><strong>Test in simulation, then in the pool</strong>, changing one thing at a time, and log the predicted horizon, the reference, the disturbance and the solve time every tick.</li>
+      </ol>
+
+      <h2 id="tick">A whole tick in forty lines</h2>
+      <p>Python-flavoured pseudocode of <code>MpcController::compute</code>, without the path and identification branches. <code>F</code> is one 50 ms stage of the model; <code>plus</code> and <code>minus</code> are <span class="m">\boxplus</span> and <span class="m">\boxminus</span>.</p>
+      <pre><code><span class="k">def</span> tick(x_meas, goal):
+    <span class="c"># 1. where the vehicle will be when this command lands</span>
+    x0 = rollout(x_meas, thruster_replica.copy(), duration=DELAY)
+    <span class="c"># 2. reference: profile samples at the end of each stage, and feedforward thrust</span>
+    refs = [profile.peek(k * DT) <span class="k">for</span> k <span class="k">in</span> range(1, N + 1)]
+    refs_lead = [profile.peek(k * DT + DT / 2 + RISE) <span class="k">for</span> k <span class="k">in</span> range(N)]
+    u_ff = [allocate(M @ (ref.accel - accel_unforced(ref.state))) <span class="k">for</span> ref <span class="k">in</span> refs_lead]
+    <span class="c"># 3. warm start: last plan shifted one stage</span>
+    U = clip(shift(U_last) <span class="k">if</span> U_last <span class="k">else</span> u_ff, -24, 24)
+    <span class="c"># 4. roll out and linearize</span>
+    xs = [x0]
+    <span class="k">for</span> k <span class="k">in</span> range(N):
+        xs.append(F(xs[k], U[k], fine=True))
+    H = zeros(N*8, N*8); g = zeros(N*8); P = zeros(20, N*8)
+    <span class="k">for</span> k <span class="k">in</span> range(N):
+        base = F(xs[k], U[k], fine=False)
+        A = column_stack([minus(F(plus(xs[k], eps*e_i), U[k]), base) / eps <span class="k">for</span> e_i <span class="k">in</span> I20])
+        B = column_stack([minus(F(xs[k], U[k] + eps*e_j), base) / eps <span class="k">for</span> e_j <span class="k">in</span> I8])
+        P = A @ P; P[:, 8*k:8*k+8] += B                 <span class="c"># sensitivity of x_{k+1} to all U</span>
+        y = error(xs[k+1], refs[k])                     <span class="c"># 12-vector</span>
+        C = jacobian(<span class="k">lambda</span> d: error(plus(xs[k+1], d), refs[k]))
+        W = Q * (TERMINAL <span class="k">if</span> k == N-1 <span class="k">else</span> 1)
+        Mk = C @ P
+        H += Mk.T @ diag(W) @ Mk
+        g += Mk.T @ (W * y)
+    <span class="c"># 5. effort and smoothness about the feedforward</span>
+    D = U - u_ff
+    H += R * I + R_RATE * DtD;  g += R * D + R_RATE * DtD @ D   <span class="c"># first stage vs last sent</span>
+    <span class="c"># 6. box QP for the step, then apply</span>
+    dU = projected_newton(H, g, lo=-24 - U, hi=24 - U, x0=zeros)
+    U = clip(U + dU, -24, 24)
+    U_last = U
+    u = limit_total(U[0], 73)                           <span class="c"># power budget, keeps direction</span>
+    thruster_replica.command(u)
+    <span class="k">return</span> u</code></pre>
+      <p>Everything else in riptide_mpc is refinement of these lines: the governor around step 2, mode-dependent weights in <code>Q</code>, thrusters pinned for identification, numerics. The JavaScript port that runs this site is about 1,800 lines including the model, the profile, the path planner and the solver; it is a good second reference next to the C++.</p>
+
+      <h2 id="identification">Identifying the model in a pool</h2>
+      <p><code>pool_identify</code> (<code>identification.cpp</code>, <code>pool_identify_node.cpp</code>) flies a scripted session with the MPC in position mode, so the vehicle is always under control, and fits the terms that cannot be measured on land. Because thrust is trusted, the realized thrust wrench is known from the commands; whatever the vehicle does beyond that is attributed to the hydrodynamics.</p>
+      <ul>
+        <li><strong>Statics</strong> from holds at several attitudes (level and tilted 25°). At a still hold, thrust balances the restoring wrench: <span class="m">\tau_{\text{hold}} = -(B - W)\,\hat z</span> in force and <span class="m">\hat z \times (B\, r_{\text{cob}})</span> in torque, linear in net buoyancy and in <span class="m">B r_{\text{cob}}</span>. Tilting makes the vertical COB offset observable.</li>
+        <li><strong>Drag</strong> from steady runs along each axis at several speeds (0.2 to 0.7 m/s, 0.3 to 0.9 rad/s in yaw): <span class="m">\tau - \tau_{\text{hold}} = D_l v + D_q |v| v</span>, a linear least-squares fit per axis.</li>
+        <li><strong>Added mass</strong> from the acceleration and braking phases of the same runs: <span class="m">\int (\tau + g - D v)\,dt = \mathbf M\, \Delta v</span> over each window, which avoids differentiating noisy velocity.</li>
+        <li><strong>Optional blocks:</strong> each thruster ramped while the other seven hold the vehicle, and null-space patterns while holding, to fit per-thruster gains; and releases, all thrusters off from level and tilted holds, so the vehicle floats up and rights itself with no thruster in the loop, for heave and roll/pitch inertia and damping.</li>
+      </ul>
+      <p>Fits are checked before they are accepted: added mass above 5× the rigid mass (3× for rotations) is rejected, and the inertia fit is repeated with the thrust delayed by up to 0.6 s; if a delay over 0.25 s explains the data better, the "inertia" is really actuation lag and is rejected. Sessions can iterate: fly, fit, load the fit into the MPC, fly again, until two fits agree.</p>
+
+      <h2 id="lessons">Lessons from the pool</h2>
+      <div class="pool-note">
+        <b>Everything below happened to Talos</b>
+        <ul>
+          <li><b>Never identify statics with a tether on.</b> The tether's pull was fitted as buoyancy and COB, and showed up untethered as a constant learned disturbance of +2.7 N·m in pitch.</li>
+          <li><b>Slow motor starts look like mass.</b> Sensorless ESCs take 0.5–0.8 s to start from 0 rpm; identification read that dead time as a surge added mass of 92–98 kg. The lag check exists because of it.</li>
+          <li><b>Per-thruster scales can hurt.</b> Fitted from holds only, they made small surge corrections pitch the robot; the team set them back to 1.0 until better data came in.</li>
+          <li><b>Acceleration limits shape everything.</b> At 0.5 m/s² a 3 cm step took ±23 N bursts and pitched Talos 8°. 0.1 m/s² with 0.3 m/s³ jerk is gentle and still fast enough.</li>
+          <li><b>Tune smoothness, not just tracking.</b> Raising the thrust-rate weight from 0.005 to 0.05 cut hover pitch wobble from 0.6–0.9° RMS to under 0.1°, with less thrust.</li>
+          <li><b>The EKF is too late to control with.</b> Velocity 0.2–0.35 s behind the DVL, rates 0.45 s behind the IMU. Build the control state from raw sensors with the model.</li>
+          <li><b>Check what the firmware actually does.</b> An ESC CAN decoding bug needed a 140 rpm offset for a while; a model identified with the offset in place had to be re-identified once the firmware was fixed.</li>
+          <li><b>Know your thrust budget.</b> Drag at 0.6 m/s is about 90 N against a 73 N budget, so the cruise speed is a wish; the governor makes it safe.</li>
+        </ul>
+      </div>
+
+      <h2 id="nereus">Results in simulation</h2>
+      <p>Before a pool test, the same C++ controller flies Talos in Nereus, the team's simulator, with the controller's model set to the simulator's (<code>active_control_model:=mpc mpc_model:=sim</code>). These runs were recorded for this site on 2026-10-27.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div class="cols" id="nereus-charts"></div></div>
+      <figcaption><b>Three steps flown in Nereus.</b> Left to right: 2 m forward, 90° yaw, 0.5 m down. Reference dashed, simulator ground truth solid. Settling to 2 cm or 1°: 8.6 s, 2.8 s and 3.2 s. Overshoot: 5 mm, 0.11°, 3 mm.</figcaption>
+    </figure>
+    <div class="prose">
+      <table class="params">
+        <thead><tr><th>Maneuver</th><th>Rise (10–90%)</th><th>Settle</th><th>Overshoot</th><th>Peak thruster</th><th>Solve, median / p95</th></tr></thead>
+        <tbody>
+          <tr><td>Surge 2 m</td><td>5.0 s</td><td>8.6 s to 2 cm</td><td>5 mm</td><td>11.5 N</td><td>10.6 / 13.7 ms</td></tr>
+          <tr><td>Yaw 90°</td><td>1.55 s</td><td>2.8 s to 1°</td><td>0.11°</td><td>5.9 N</td><td>10.8 / 18 ms</td></tr>
+          <tr><td>Depth 0.5 m</td><td>1.85 s</td><td>3.2 s to 2 cm</td><td>3 mm</td><td>13.3 N</td><td>10.7 / 19 ms</td></tr>
+          <tr><td>Path, 7.2 m</td><td colspan="2">25.6 s, peak 0.49 m/s</td><td>2.2 mm RMS cross-track</td><td>14.2 N</td><td>11.3 / 21.5 ms</td></tr>
+        </tbody>
+      </table>
+      <p>In simulation the model is exact, so these are the controller's own limits: the surge is as slow as the profile asks (0.1 m/s²), and the errors are millimetres. The real robot does worse, by however much the model is wrong and the sensors are late; that difference is what identification and the disturbance estimate are for.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel flush"><div id="gallery" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr));gap:2px;background:var(--paper-3)"></div></div>
+      <figcaption><b>The Nereus viewer during the path run.</b> The thin white line is the planned path, orange the MPC's predicted horizon, red arrows the thruster forces.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="reading">Further reading</h2>
+      <ul>
+        <li>T. I. Fossen, <em>Handbook of Marine Craft Hydrodynamics and Motion Control</em>, 2nd ed., Wiley, 2021. The model, in full; and the MSS toolbox (<code>m2c</code> and friends).</li>
+        <li>J. B. Rawlings, D. Q. Mayne, M. M. Diehl, <em>Model Predictive Control: Theory, Computation, and Design</em>, 2nd ed., Nob Hill, 2017. MPC from the ground up, free online.</li>
+        <li>M. Diehl, H. G. Bock, J. P. Schlöder, "A real-time iteration scheme for nonlinear optimization in optimal feedback control," <em>SIAM J. Control and Optimization</em> 43(5), 2005.</li>
+        <li>D. P. Bertsekas, "Projected Newton methods for optimization problems with simple constraints," <em>SIAM J. Control and Optimization</em> 20(2), 1982.</li>
+        <li>G. Pannocchia, J. B. Rawlings, "Disturbance models for offset-free model-predictive control," <em>AIChE Journal</em> 49(2), 2003.</li>
+        <li>J. Solà, J. Deray, D. Atchuthan, "A micro Lie theory for state estimation in robotics," arXiv:1812.01537, 2018. The <span class="m">\boxplus</span>/<span class="m">\boxminus</span> and Exp/Log machinery.</li>
+      </ul>
+      <p>And the code itself: <a href="https://github.com/osu-uwrt/riptide_control/tree/mpc/riptide_mpc">riptide_control/riptide_mpc</a> on the <code>mpc</code> branch, with <a href="https://github.com/osu-uwrt/nereus">Nereus</a> to fly it. This site's source, including the JavaScript port, is in <a href="https://github.com/zehdari/riptide-mpc-explained">zehdari/riptide-mpc-explained</a>.</p>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/build.js"></script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The optimal control problem · How Talos flies</title>
+<meta name="description" content="The finite-horizon problem riptide_mpc solves every 50 ms: state, decisions, tracking errors on the quaternion manifold, weights, effort about inverse-dynamics feedforward, smoothness, and planning through the thruster delay.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 4</div>
+    <h1>The optimal control problem</h1>
+    <p class="lede">Every 50 ms the controller asks one question: which thrust, for each of the next 30 intervals, keeps Talos closest to its reference without wasting effort? This chapter writes that question down exactly.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="problem">The problem, in one line</h2>
+      <p>With <span class="m">N = 30</span> stages of <span class="m">\Delta t = 50</span> ms (a 1.5 s horizon), the decision is the sequence of thruster commands <span class="m">U = (u_0, \dots, u_{N-1})</span>, eight numbers per stage. riptide_mpc solves</p>
+      <div class="M">\begin{aligned} \min_{U}\quad & \sum_{k=1}^{N} w_k\, \big\| y_k(x_k) \big\|^2_{Q} \;+\; \sum_{k=0}^{N-1} r\,\big\| u_k - u^{\text{ff}}_k \big\|^2 \\ & \;+\; \sum_{k=0}^{N-1} r_\Delta \big\| (u_k - u^{\text{ff}}_k) - (u_{k-1} - u^{\text{ff}}_{k-1}) \big\|^2 \\[4pt] \text{s.t.}\quad & x_0 = \Phi_{\text{delay}}(\hat x), \quad x_{k+1} = F(x_k, u_k), \quad |u_k| \le 24\ \text{N} \end{aligned}</div>
+      <p>Each piece has a job:</p>
+      <ul>
+        <li><span class="m">F</span> is one 50 ms stage of the Fossen model with the thruster lag, the step from Chapter 1 run 25 times with <span class="m">u_k</span> held. It is nonlinear, which is why Chapter 5 exists.</li>
+        <li><span class="m">y_k</span> is a 12-vector of tracking errors against the reference at the end of stage <span class="m">k</span>, weighted by the diagonal <span class="m">Q</span>; <span class="m">w_k = 1</span> except the terminal stage, <span class="m">w_N = 5</span>.</li>
+        <li>Effort and smoothness are measured from <span class="m">u^{\text{ff}}_k</span>, the thrust that inverse dynamics says the reference needs. Following the reference is free; only deviating from it costs.</li>
+        <li><span class="m">x_0</span> is not the measured state but where the vehicle will be when this command takes effect, 30 ms from now.</li>
+      </ul>
+
+      <h2 id="graph">The horizon as a graph</h2>
+      <p>It helps to draw the problem as a factor graph: circles are variables, squares are terms of the cost. States form a chain, each linked to the previous state and one command by the dynamics; each state carries its own tracking cost; consecutive commands share a smoothness term.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="controls">
+          <label>stages shown <input type="range" id="fg-n" min="3" max="10" value="6"><output id="fg-n-o"></output></label>
+          <div class="seg" role="group" aria-label="View"><button data-v="full" aria-pressed="true">With states</button><button data-v="condensed" aria-pressed="false">States eliminated</button></div>
+        </div>
+        <div id="fg"></div>
+        <div id="fg-note" style="font-family:var(--sans);font-size:.86rem;color:var(--ink-2);min-height:2.6em"></div>
+      </div>
+      <figcaption><b>The optimal control problem as a factor graph.</b> Hover a command <span class="m">u_k</span>: its effect flows down the chain of states, so it touches every tracking cost after it but none before. Switch to the condensed view to see the problem the solver actually works with: the states are gone, replaced by edges from each command to every later cost.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>That second picture is the whole design choice of Chapter 5 in miniature. Because <span class="m">x_0</span> is fixed and every later state is a function of the commands, the states can be eliminated (<em>condensing</em>), leaving an unconstrained-dynamics problem in the 240 commands alone. The price is that the graph becomes dense: command <span class="m">u_0</span> is now connected to all 30 costs, and the Hessian couples every pair of stages.</p>
+
+      <h2 id="state">The state and the decisions</h2>
+      <p>The prediction state is the 13-number body state of Chapter 1 plus the eight realized thruster forces:</p>
+      <div class="M">\tilde x = (p,\ q,\ v,\ \omega,\ f) \in \R^{3} \times S^3 \times \R^3 \times \R^3 \times \R^8</div>
+      <p>The forces are states because the thrusters lag (Chapter 2): a command sets the target that <span class="m">f</span> moves toward. Perturbations of <span class="m">\tilde x</span> live on its tangent space, three numbers for attitude instead of four, so the linearized state has 12 + 8 = 20 dimensions. The commands <span class="m">u_k \in [-24, 24]^8</span> are the only decision variables. On Talos that is 30 × 8 = 240 numbers.</p>
+
+      <h2 id="errors">What "close to the reference" means</h2>
+      <p>The error vector compares the predicted state at the end of each stage with the reference profile sampled at the same instant (Chapter 3). For position-mode control:</p>
+      <div class="M">y_k = \begin{bmatrix} p_b - p_{\text{ref}} \\ \operatorname{Log}\!\big(q_{\text{ref}}^{-1} \otimes q\big) \\ v_b - R(q)^\top v_{\text{ref}} \\ \omega - R(q)^\top \omega_{\text{ref}} \end{bmatrix} \in \R^{12}</div>
+      <p>Position and velocity are those of <code>base_link</code>, not the COM (<span class="m">p_b = p + R(q) r_{bl}</span>, <span class="m">v_b = v + \omega \times r_{bl}</span>), because that is the point the setpoints are about. The attitude error is the rotation vector of the relative rotation, which is a proper distance on rotations: small, smooth, and the same in every direction, with none of the wrap-around or gimbal problems of differencing Euler angles. Velocities are compared in the body frame.</p>
+      <p>The weights depend on the mode each half of the command is in:</p>
+      <table class="params">
+        <thead><tr><th>Error</th><th>POSITION mode</th><th>VELOCITY mode</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>position x, y, z</td><td>400, 400, 400</td><td>0</td><td>The main objective when holding or moving to a pose.</td></tr>
+          <tr><td>attitude roll, pitch, yaw</td><td>3000, 3000, 300</td><td>0</td><td>Roll and pitch dominate: never tilt to gain distance.</td></tr>
+          <tr><td>linear velocity</td><td>20 (damping)</td><td>100</td><td>In position mode: follow the profile's velocity, zero once it arrives.</td></tr>
+          <tr><td>angular velocity</td><td>10 (damping)</td><td>50</td><td>Same, for rates.</td></tr>
+          <tr><td>terminal factor</td><td colspan="2">× 5 on the last stage</td><td>Pulls the end of the plan onto the reference.</td></tr>
+          <tr><td>effort <span class="m">r</span></td><td colspan="2">0.001 per N²</td><td>About the feedforward, so it only resists deviation.</td></tr>
+          <tr><td>smoothness <span class="m">r_\Delta</span></td><td colspan="2">0.05 per N²</td><td>Suppresses chatter between successive stages.</td></tr>
+        </tbody>
+      </table>
+      <p>Why 3000 on roll and pitch? The forward thrusters sit above and below the COM, so any surge thrust is also a pitch moment, and a cheap way to "move forward" in a cost function is to tip the nose. A heavy tilt weight forbids that trade, and the restoring torque from buoyancy (Chapter 1) means holding level costs little thrust. The same numbers are in <code>config/mpc.yaml</code> and can be changed live.</p>
+
+      <h2 id="feedforward">Effort about the feedforward</h2>
+      <p>A plain effort term <span class="m">r\|u_k\|^2</span> has a flaw: it pays the controller to use less thrust than the reference needs. Holding depth against 1.6 N of buoyancy, or cruising against drag, would then always come with a steady lag, the point where the tracking cost of lagging balances the effort cost of thrust. riptide_mpc penalizes the deviation from a feedforward instead, computed by running the model backwards along the reference:</p>
+      <div class="M">\boldsymbol\tau^{\text{ff}}_k = \mathbf M\big(\dot{\boldsymbol\nu}_{\text{ref}} - \dot{\boldsymbol\nu}\,\big|_{x_{\text{ref}},\ \tau = 0}\big), \qquad u^{\text{ff}}_k = \operatorname{clip}\big(\mathbf T^{+}\boldsymbol\tau^{\text{ff}}_k\big)</div>
+      <p>The second term is the model's own acceleration at the reference state with no thrust (drag, Coriolis, buoyancy, and the learned disturbance), so <span class="m">\boldsymbol\tau^{\text{ff}}</span> is exactly the wrench that makes the reference's acceleration happen there. The reference's body acceleration comes from its world acceleration, <span class="m">\dot v = R^\top a - \omega \times v</span>, moved from base_link to the COM. Each stage's feedforward is sampled a thruster rise time (80 ms) after the stage midpoint, so the command leads the lagging thrust.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div class="cols" id="ff-charts"></div></div>
+      <figcaption><b>A 1.5 m surge step with and without the feedforward</b>, browser port, with the effort weight raised to 0.03 so the effect is easy to see. Without it the effort penalty pulls thrust toward zero: Talos lags the reference by up to 6.7 cm and sags 1 cm in depth while moving. With it, the lag is 1.1 cm. At the shipped weight (0.001) the difference is smaller, but it never goes away.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>The smoothness term works on the same deviations: <span class="m">r_\Delta\|(u_k - u^{\text{ff}}_k) - (u_{k-1} - u^{\text{ff}}_{k-1})\|^2</span>, with <span class="m">u_{-1}</span> the deviation actually sent last tick. Following a smooth, jerk-limited feedforward is free; jumping away from it is not.</p>
+      <div class="pool-note">
+        <b>From the pool</b>
+        <p>The smoothness weight came from a sweep on 2026-10-03. At 0.005 Talos wobbled in hover (0.6–0.9° RMS pitch, about 4°/s); at 0.02 and 0.05 it held pitch to 0.07–0.09° with less total thrust. The controller ships with 0.05.</p>
+      </div>
+
+      <h2 id="delay">Planning through the delay</h2>
+      <p>A command computed now starts acting 30 ms from now. Everything sent before it is already queued in the thrusters, and the controller knows exactly what: it keeps a replica of the thruster dynamics, fed every command it publishes. So before planning, it rolls the measured state forward through the delay with those in-flight commands:</p>
+      <pre><code><span class="c">// mpc.cpp, MpcController::compute</span>
+Point x0{measured, actuator_.forces()};
+<span class="k">if</span> (settings_.compensate_delay) {
+    ThrusterDynamics actuator = actuator_;            <span class="c">// copy of the replica, queue included</span>
+    <span class="k">for</span> (<span class="k">int</span> i = 0; i &lt; steps; ++i)
+        model_.step(x0.x, actuator, delay / steps);   <span class="c">// Fossen model, in-flight thrust</span>
+    x0.f = actuator.forces();
+}</code></pre>
+      <p>Stage 0 of the plan then starts at the instant the new command lands. The reference profile is kept on the same clock (it describes where the vehicle should be at now + 30 ms), so a new setpoint starts moving exactly when thrust can first respond to it.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel" id="timeline"></div>
+      <figcaption><b>One tick on a timeline.</b> At tick k the controller measures, rolls the state through the 30 ms of commands already in flight, and plans 30 stages from there. Only the first stage's command is published; at tick k+1 the whole plan is recomputed.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h2 id="receding">Receding horizon</h2>
+      <p>Of the 240 numbers it solves for, the controller uses eight. The rest are a plan it throws away 50 ms later, except as next tick's starting guess (Chapter 5). In the plot below each thin green curve is the position the controller predicted at one tick, 1.5 s ahead.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel" id="fan"></div>
+      <figcaption><b>Predictions from a model that is wrong.</b> Browser port, a 1.5 m surge step, every third tick shown. Here the simulated Talos has twice the drag the controller's model says, and disturbance learning is off. Every prediction is optimistic: it expects Talos to keep up with the reference, and it never quite does. But each tick re-plans from where Talos actually is, so the error never accumulates, and the vehicle still arrives. That is the feedback hidden inside a receding horizon.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="modes">Modes</h2>
+      <p>Autonomy commands the linear and angular halves separately (<code>riptide_msgs2/ControllerCommand</code>): <code>POSITION</code> (track a pose via the profile or a path), <code>VELOCITY</code> (track a body- or world-frame velocity, acceleration-limited), <code>FEEDFORWARD</code> (a raw body wrench, allocated directly, no MPC), or <code>DISABLED</code>. The mode only changes which errors carry weight and how the reference is generated; the optimization is the same.</p>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/mpc.js"></script>
+</body>
+</html>

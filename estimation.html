@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Feedback and model error · How Talos flies</title>
+<meta name="description" content="riptide_mpc's model-based state estimator, offset-free MPC through a learned disturbance wrench, the settle-trust signal autonomy waits on, and how the ROS 2 node ties it together.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 6</div>
+    <h1>Feedback and model error</h1>
+    <p class="lede">A prediction is only useful if it starts from the right place and the model behind it is honest. The estimator handles the first; a learned disturbance wrench handles the second, and makes the controller offset-free.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="why">Why the MPC has its own estimator</h2>
+      <p>Talos already runs an EKF (robot_localization) that fuses the same sensors. The MPC uses it only as an anchor, because for control it is late. Bench and pool tests on 2026-10-27 measured its velocity 0.2–0.35 s behind the DVL, and its roll and pitch rates about 0.45 s behind the IMU. Half a second of lag in the feedback of a controller planning 1.5 s ahead is a third of its horizon.</p>
+      <p>So <a href="https://github.com/osu-uwrt/riptide_control/blob/mpc/riptide_mpc/src/state_estimator.cpp"><code>state_estimator.cpp</code></a> builds the MPC's state directly from raw sensors (<code>state_source: sensors</code> in <code>mpc.yaml</code>). Between measurements it propagates the same Fossen model, driven by a replica of the thrusters fed every command the MPC publishes. Each measurement then corrects the channel it observes.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel" id="est-graph"></div>
+      <figcaption><b>Which sensor corrects what.</b> Left, the measurements; right, the parts of the state. Edge labels are how strongly each correction is applied: a gain per sample, or a time constant for slow anchors. Hover a node.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>The corrections are complementary-filter style: fast sensors are trusted outright, slow or drifting references are blended in with a time constant <span class="m">\tau</span>, using a gain that accounts for the time since the last sample,</p>
+      <div class="M">x \leftarrow x + k\,(z - h(x)), \qquad k = 1 - e^{-\Delta t / \tau}</div>
+      <p>with <span class="m">\Delta t</span> capped at <span class="m">\tau</span> so a dropout never makes one sample jump the state. A few details carry most of the value:</p>
+      <ul>
+        <li><strong>Body rates come straight from the gyros</strong> (gain 1), with the fibre-optic gyro owning the yaw axis when it is fresh. No filter lag at all on the fastest channel.</li>
+        <li><strong>Roll and pitch from gravity, slowly.</strong> The IMU's orientation is used only for its "up" direction, blended in with a 1 s time constant by rotating about <span class="m">\hat z_{\text{meas}} \times \hat z_{\text{est}}</span>, which corrects tilt without touching heading. The gyro carries the fast motion.</li>
+        <li><strong>The DVL measures its own point.</strong> Its velocity is <span class="m">v + \omega \times r_{\text{dvl}}</span>, so the estimator compares against that, using the fresh gyro rate. Otherwise every rotation would read as translation. DVL messages arrive about 125 ms after the measurement, so the estimator compares them with its own velocity at the measurement's timestamp (from a one-second history) and applies the correction now.</li>
+        <li><strong>The EKF anchors x, y and heading</strong> with 2 s time constants (nothing else observes them), and stands in, faster, for any sensor that goes stale. If the two disagree by more than 1 m or 0.5 rad, the estimator re-seeds from the EKF.</li>
+      </ul>
+
+      <h2 id="offsetfree">Learning what the model is missing</h2>
+      <p>No identified model is exact. Talos's buoyancy changes with a new payload; the COB moves when a battery does; a thruster gets weaker. Any of these leaves a constant wrench the model does not know about, and a controller that predicts without it holds position slightly off: the classic steady-state offset of MPC with model error.</p>
+      <p>The estimator sees that error directly. After propagating the model between two DVL samples, the velocity it predicted differs from the one measured by some innovation <span class="m">e_v</span>. A wrench the model is missing would cause exactly <span class="m">\Delta v = \mathbf M^{-1}\tau_{\text{miss}}\,\Delta t</span>, so the innovation is evidence of a missing wrench <span class="m">\mathbf M e_v / \Delta t</span>. riptide_mpc moves its estimate <span class="m">\hat d</span> toward it with a time constant:</p>
+      <div class="M">\hat d_F \leftarrow \hat d_F + \gamma\, \frac{R(q)\, \mathbf M_{v}\, e_v}{\tau_F}, \qquad \hat d_\tau \leftarrow \hat d_\tau + \gamma\, \frac{\mathbf M_{\omega}\, e_\omega}{\tau_\tau}, \qquad \tau_F = \tau_\tau = 3\ \text{s}</div>
+      <p>with <span class="m">\mathbf M_v</span>, <span class="m">\mathbf M_\omega</span> the translational and rotational blocks of the mass matrix. The force is kept in the world frame (buoyancy error points up whatever the attitude), the torque in the body frame (a COB offset rotates with the hull). Both are clamped, to 20 N and 5 N·m.</p>
+      <p>Then the key step: <span class="m">\hat d</span> is added to the model the MPC predicts with, in every stage, as the <span class="m">\boldsymbol\tau_d</span> of Chapter 1. It also enters the feedforward, through the model's unforced acceleration. This is <strong>offset-free MPC</strong> (Pannocchia and Rawlings, 2003): at steady state the innovations are zero only when the model plus <span class="m">\hat d</span> reproduces the plant, and the controller, predicting with that, cancels the disturbance exactly. It acts like integral action, but through the model, so it does not wind up and does not fight the plan.</p>
+      <p>One refinement keeps it honest. Speed-dependent error, mostly drag, would be learned while moving and linger after stopping, so learning is slowed with speed:</p>
+      <div class="M">\gamma = \frac{1}{1 + (|v| / 0.1\ \text{m/s})^2} \cdot \frac{1}{1 + (|\omega| / 0.2\ \text{rad/s})^2}</div>
+      <p>The disturbance estimate is meant to capture statics; the feedback loop handles the rest.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="cols" id="dist-charts"></div>
+      </div>
+      <figcaption><b>A plant the model is wrong about.</b> Browser port. The simulated Talos is 6 N more buoyant than the controller's model, and its centre of buoyancy is 12 mm further forward. It holds position for 20 s, then moves 1 m forward. Without learning (orange) it sits 2 cm high and pitched 5° nose up for as long as the error lasts. With learning (blue) the estimate converges in about 10 s to +6 N up and −4.2 N·m in pitch (about the 12 mm of COB offset times the 340 N of buoyancy), and both errors go to zero.</figcaption>
+    </figure>
+    <div class="prose">
+      <div class="pool-note">
+        <b>From the pool</b>
+        <p>The learned disturbance doubles as a model check. In a well-identified hold it should sit near zero, so a steady value says the statics are off. On 2026-10-26 an untethered run flew with a model fitted while tethered: the tether's pull had been absorbed into the fitted buoyancy and COB. The MPC's disturbance settled at +2.7 N·m pitch, +0.7 N·m roll and +1.3 N heave, pointing straight at the contaminated terms. Lesson: never identify statics with a tether on.</p>
+      </div>
+
+      <h2 id="trust">Has it arrived?</h2>
+      <p>Autonomy needs to know when a move is done. The node publishes a <strong>settle trust</strong> per axis on <code>controller/scale/trust</code>, a number in [0, 1] that the behaviour tree's <code>WaitForController</code> waits on (typically above 0.8–0.99). It is reset to 0 whenever the setpoint moves, and grows only while the profile has reached the setpoint and the vehicle is within 2 cm, 2°, 3 cm/s and 0.03 rad/s of it:</p>
+      <div class="M">\text{trust} \leftarrow \begin{cases} 1 - e^{-\Delta t/0.25}\,(1 - \text{trust}) & \text{settled} \\ \text{trust}\cdot e^{-\Delta t / 1.0} & \text{otherwise} \end{cases}</div>
+      <p>so it passes 0.95 about a second after arrival, and one noisy sample barely dents it. A <code>FollowPath</code> goal succeeds when trust reaches 0.8 on the last point, and fails if the reference makes less than 5 cm of progress in 10 s.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel" id="trust-chart"></div>
+      <figcaption><b>Trust during a 2 m surge step in Nereus</b>, the C++ controller on the simulator. Trust is zero while the reference is still moving, then climbs once the profile has arrived and the vehicle is within tolerance.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="node">The node around it</h2>
+      <p><code>mpc_controller_node.cpp</code> turns all of this into a ROS 2 controller. A 20 Hz timer runs the tick: advance the thruster replica and the reference by the elapsed time, update the estimate, hand the disturbance to the controller, compute, publish. If the vehicle is killed, motion is disabled or odometry is stale, it publishes zero thrust and clears the warm start instead, so it restarts cleanly.</p>
+      <table class="params">
+        <thead><tr><th>Topic</th><th>Direction</th><th>What</th></tr></thead>
+        <tbody>
+          <tr><td><code>controller/linear</code>, <code>controller/angular</code></td><td>in</td><td>Setpoints and modes (ControllerCommand)</td></tr>
+          <tr><td><code>follow_path</code></td><td>action</td><td>Lines and arcs flown as one path</td></tr>
+          <tr><td><code>vectornav/imu</code>, <code>gyro/twist</code>, <code>dvl_twist</code>, <code>depth/pose</code>, <code>odometry/filtered</code></td><td>in</td><td>Sensors for the estimator, EKF as anchor</td></tr>
+          <tr><td><code>thruster_forces</code>, <code>command/requested_rpm</code></td><td>out</td><td>The first stage's command, in newtons and as RPM</td></tr>
+          <tr><td><code>controller/mpc/predicted_path</code>, <code>planned_path</code>, <code>reference</code></td><td>out</td><td>The horizon, the planned path, the live profile pose</td></tr>
+          <tr><td><code>controller/mpc/disturbance</code>, <code>state</code>, <code>solve_time_ms</code></td><td>out</td><td>Learned wrench, the estimate, timing</td></tr>
+          <tr><td><code>controller/scale/trust</code></td><td>out</td><td>Settle trust per axis</td></tr>
+        </tbody>
+      </table>
+      <p>Most parameters, including weights, motion limits and the thruster model, can be changed live with <code>ros2 param set</code>; the controller swaps them in without restarting, keeping its replica, profile and warm start.</p>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/estimation.js"></script>
+</body>
+</html>

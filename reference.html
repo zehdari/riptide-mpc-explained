@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Where to go: profiles and paths · How Talos flies</title>
+<meta name="description" content="How riptide_mpc turns a setpoint into a jerk-limited S-curve reference, plans lines, arcs and rounded corners as one curve with a speed envelope, and slows the reference when the vehicle falls behind.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 3</div>
+    <h1>Where to go: profiles and paths</h1>
+    <p class="lede">The MPC never chases a setpoint. It follows a reference that moves toward the setpoint at speeds, accelerations and jerks the vehicle can actually produce, and that arrives exactly, with nothing left to overshoot.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="why">Why not just step the setpoint?</h2>
+      <p>Hand an MPC a target two metres away and it does what its cost function says: get there as fast as the thrust allows, because every stage spent away from the target costs position error. That means full thrust, a hard stop, and on a vehicle with 30 ms of delay and an imperfect model, overshoot. It also means the MPC's plan changes completely every time autonomy nudges the goal.</p>
+      <p>riptide_mpc separates <em>where to go</em> from <em>how to get there</em>. A reference generator turns each goal into a smooth trajectory with bounded speed, acceleration and jerk. Each tick, the MPC gets 30 samples of that trajectory, one per stage, with the position, velocity, acceleration and their angular counterparts, and tracks them. The velocity and acceleration matter as much as the position: they feed the effort term and the feedforward thrust (Chapter 4), so following the reference costs nothing and lagging it does.</p>
+
+      <h2 id="scurve">The S-curve</h2>
+      <p><a href="https://github.com/osu-uwrt/riptide_control/blob/mpc/riptide_mpc/src/motion_profile.cpp"><code>motion_profile.cpp</code></a> moves the reference with piecewise-constant jerk: jerk is the control input of a triple integrator, and the profile picks it every 2 ms substep. The rule is greedy and simple:</p>
+      <ol>
+        <li>Try the jerk that drives velocity toward the cruise speed <span class="m">v_{\max}</span> (accelerating, holding, or easing off so acceleration ends at zero).</li>
+        <li>Predict one substep ahead with that jerk. If the distance to stop from there, braking as hard as the limits allow, exceeds the distance left, brake instead.</li>
+      </ol>
+      <p>The stopping distance has a closed form. From speed <span class="m">v</span> at zero acceleration, deceleration ramps up at the jerk limit <span class="m">j</span> to a peak <span class="m">a_p = \min\!\big(\sqrt{jv},\ a_{\max}\big)</span>, holds while needed, and ramps back to zero so the reference stops with no acceleration left. With <span class="m">a_p = \sqrt{jv}</span> (no hold phase) it is</p>
+      <div class="M">d_{\text{stop}}(v) = v\sqrt{v/j}</div>
+      <p>and in general the code integrates the three constant-jerk phases exactly (<code>scalar::stoppingDistance</code>), including when the reference is still accelerating or is already braking harder than needed. Try it with Talos's limits, then change them:</p>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="controls">
+          <label>distance <input type="range" id="sc-d" min="0.05" max="6" step="0.05" value="2"><output id="sc-d-o"></output></label>
+          <label>speed <input type="range" id="sc-v" min="0.1" max="1" step="0.05" value="0.6"><output id="sc-v-o"></output></label>
+          <label>accel <input type="range" id="sc-a" min="0.05" max="1" step="0.05" value="0.1"><output id="sc-a-o"></output></label>
+          <label>jerk <input type="range" id="sc-j" min="0.1" max="3" step="0.1" value="0.3"><output id="sc-j-o"></output></label>
+        </div>
+        <div class="cols" id="sc-charts" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr))"></div>
+      </div>
+      <figcaption><b>A rest-to-rest move</b> with the profile's own decision rule. Defaults are Talos's horizontal limits from <code>mpc.yaml</code>: 0.6 m/s, 0.1 m/s², 0.3 m/s³. With them a 2 m move never reaches cruise speed: acceleration is the bottleneck. Small moves are governed by jerk, so peak acceleration grows like <span class="m">(d j^2/2)^{1/3}</span>.</figcaption>
+    </figure>
+    <div class="prose">
+      <div class="pool-note">
+        <b>From the pool</b>
+        <p>The acceleration limit was 0.5 m/s² until a pool test on 2026-10-24: a 3 cm step then took ±23 N bursts on the forward thrusters and pitched Talos about 8°. The forward thrusters sit above and below the COM, so a hard surge kick is also a pitch kick. At 0.1 m/s² and 0.3 m/s³ the same moves are gentle; acceleration ramps over 0.33 s.</p>
+      </div>
+
+      <h3 id="capture">Arriving without chatter</h3>
+      <p>Bang-bang jerk switching is time-optimal, but near the target it chatters at the 2 ms resolution. Inside a small capture region (2 mm, 2 cm/s, 0.1 m/s²) the profile switches to a critically damped linear law with a triple pole at <span class="m">s = -10</span>:</p>
+      <div class="M">j = p^3 e - 3p^2 v - 3p\, a, \qquad p = 10\ \text{s}^{-1}</div>
+      <p>where <span class="m">e</span> is the remaining offset. That is the characteristic polynomial <span class="m">(s+p)^3</span>: the last millimetres decay smoothly and the reference snaps exactly onto the target once it is within 0.2 mm and nearly still.</p>
+
+      <h3 id="threed">In three dimensions</h3>
+      <p>Position moves along the straight line to the target. Each substep the profile builds an orthonormal basis: <span class="m">e_1</span> toward the target, <span class="m">e_2</span> along any sideways velocity, <span class="m">e_3</span> completing it. Along <span class="m">e_1</span> it runs the S-curve; along the other two it brings velocity and acceleration to zero under the same limits. A goal that changes mid-move therefore bends the reference smoothly instead of kinking it.</p>
+      <p>Vertical motion has its own limits (Talos: 0.3 m/s and 0.2 m/s²), and a diagonal move gets the ellipse between the two:</p>
+      <div class="M">\frac{1}{L(\theta)} = \sqrt{\Big(\frac{\cos\theta}{L_h}\Big)^2 + \Big(\frac{\sin\theta}{L_v}\Big)^2}</div>
+      <p>where <span class="m">\theta</span> is the move's angle from horizontal. Attitude uses the same machinery on rotations: the offset is the rotation vector <span class="m">\operatorname{Log}(q_{\text{target}} q^{-1})</span>, the profile moves along it, and the orientation is advanced with the exponential map. Talos turns at up to 1 rad/s, 0.8 rad/s², 3 rad/s³.</p>
+
+      <h2 id="paths">Paths: one curve, one speed profile</h2>
+      <p>Point-to-point moves stop at every point. For a sequence of moves, autonomy sends a <code>FollowPath</code> action of lines and arcs, and <a href="https://github.com/osu-uwrt/riptide_control/blob/mpc/riptide_mpc/src/path_plan.cpp"><code>path_plan.cpp</code></a> plans it as a single curve parameterized by distance <span class="m">s</span>, stopping only at the end. Building one takes four passes.</p>
+      <p><strong>1. Pieces.</strong> Each point becomes a piece from the previous one: a line, an arc about a centre (a spiral if the radius changes, a helix if the depth does), or a turn in place if the point is within 5 cm of the last one. A turn in place still advances <span class="m">s</span>, by <span class="m">\rho\,|\Delta\psi|</span> metres with <span class="m">\rho = v_{\max}/\omega_{\max}</span>, so turning counts as progress.</p>
+      <p><strong>2. Corners.</strong> A sharp join between two moving pieces is rounded by a quadratic Bézier from a distance <span class="m">d</span> before the corner to <span class="m">d</span> after it (<span class="m">d</span> up to <code>corner_radius</code> = 0.3 m, and at most 45% of either piece), split in half so each half belongs to its own segment.</p>
+      <p><strong>3. Heading.</strong> Each segment's yaw comes from its heading mode: hold the waypoint's heading, face along the path, or look at a point. The yaw is then averaged over a 0.3 m window of <span class="m">s</span> (<code>heading_blend</code>), so the turn rate per metre never steps and the angular acceleration stays bounded at any speed.</p>
+      <p><strong>4. Speed envelope.</strong> Every 2 cm of <span class="m">s</span>, the planner computes how fast the reference may go there:</p>
+      <div class="M">v(s) \le \min\Big\{\, \frac{v_{\max}}{|dp/ds|},\ \ \frac{\omega_{\max}}{|d\psi/ds|},\ \ \sqrt{\frac{a_{\text{lat}}}{\kappa(s)}},\ \ \sqrt{\frac{\alpha_{\max}}{2\,|d^2\psi/ds^2|}} \,\Big\}</div>
+      <p>The linear and angular speed limits, the lateral acceleration on curves (<span class="m">\kappa</span> is curvature, <span class="m">a_{\text{lat}}</span> = 0.3 m/s²), and the angular acceleration a changing turn rate demands. Joins that cannot be rounded are capped at a crawl (3 cm/s). Then a backward pass makes the envelope reachable by braking: <span class="m">v_j^2 \le v_{j+1}^2 + a_j\,\Delta s</span>, which is braking at half the acceleration limit to leave room for the jerk ramps.</p>
+      <p>Drag the points below. The planner is the browser port of <code>PathPlan::build</code> with Talos's limits.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="controls">
+          <label>corner radius <input type="range" id="pp-r" min="0" max="0.6" step="0.02" value="0.3"><output id="pp-r-o"></output></label>
+          <label>lateral accel <input type="range" id="pp-lat" min="0.05" max="1" step="0.05" value="0.3"><output id="pp-lat-o"></output></label>
+          <div class="seg" role="group" aria-label="Heading"><button data-h="PATH" aria-pressed="true">Face along the path</button><button data-h="WAYPOINT" aria-pressed="false">Hold heading</button></div>
+          <button class="btn" id="pp-play">Play the reference</button>
+        </div>
+        <div id="pp-wrap" style="display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:1rem;align-items:start"></div>
+        <div id="pp-chain" style="margin-top:.6rem"></div>
+      </div>
+      <figcaption><b>A path as one curve.</b> Left: the path from above, with the first point fixed where the reference starts; drag the others. Lines are blue, arcs green, corner blends orange. Right: the speed envelope along s (dashed: the local limit before braking; solid: after the backward pass) and the speed the reference actually reaches. Below: the path as a chain of pieces.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Moving along the path is a one-dimensional version of the S-curve, now in <span class="m">s</span>. Each substep, the reference targets the lowest envelope speed within its acceleration ramp's look-ahead, under the tightest acceleration and jerk limits on the way there, and brakes when its stopping distance reaches the end. Its pose is the path's position and heading at <span class="m">s</span>; its velocity is the tangent times <span class="m">\dot s</span>; its acceleration adds the centripetal term <span class="m">\kappa \dot s^2</span>. Those are exactly the reference velocity and acceleration the MPC's feedforward needs.</p>
+      <p>Paths can also follow moving targets. Points given in a TF frame that moves (an object the mapping system keeps refining) carry the path with them through a separate rate-limited profile, and look-at segments can turn toward a moving target, all without stepping the reference. The browser port leaves those out.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel flush" style="background:#0f2633"><video src="/riptide-mpc-explained/img/nereus_path.mp4" poster="/riptide-mpc-explained/img/nereus_path_overview.webp" controls muted playsinline loop preload="none" style="width:100%;display:block"></video></div>
+      <figcaption><b>The same kind of path in Nereus</b>, flown by the real C++ controller on the simulator: a 2 m line, a corner rounded at 0.3 m, a 1.5 m line, a 180° arc and a line back. The thin white line is the planned path, orange the MPC's predicted horizon. Played at 1.5×. Cross-track error over the 7.2 m run: 2.2 mm RMS, 7 mm worst.</figcaption>
+    </figure>
+
+    <div class="prose">
+      <h2 id="governor">When the vehicle falls behind</h2>
+      <p>A reference is a promise the vehicle has to keep. When it cannot (a thruster saturates, the model is off, the drag at cruise speed is more than the 73 N budget), the reference runs away and the error grows until the MPC is fighting a target metres ahead. riptide_mpc uses a <strong>reference governor</strong>: each tick it measures how far the vehicle is behind the profile and scales the profile's cruise speed down,</p>
+      <div class="M">\sigma = \operatorname{clamp}\!\Big(1 - \frac{\ell - \ell_0}{\ell_1 - \ell_0},\ 0.1,\ 1\Big), \qquad \ell_0 = 0.15\ \text{m},\ \ \ell_1 = 0.40\ \text{m}</div>
+      <p>so it slows smoothly from full speed at 15 cm of lag to a crawl at 40 cm. The governor is switched off near the final stop: cutting the speed while the profile brakes would make it overshoot and hunt. Attitude has the same mechanism (0.05 to 0.25 rad). If the vehicle still ends up more than 1 m (or 0.8 rad) behind, the profile is re-seeded at the vehicle, on a path at the nearest point within 2 m of where it was.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div class="cols" id="gov-charts"></div></div>
+      <figcaption><b>An 8 m surge with the governor on and off</b>, simulated with the browser port. To make the effect visible the profile is allowed 0.3 m/s² here; its 0.6 m/s cruise is above the ~0.54 m/s that 73 N of thrust can hold against drag. Without the governor the reference pulls 87 cm ahead; with it the lag stays near 20 cm and the reference waits for the vehicle.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>One more detail ties the reference to the MPC. The profile lives on the prediction's clock: it describes where the vehicle should be 30 ms from now, when the command being computed starts to act. A new setpoint therefore starts moving at the first instant thrust can respond, and the reference never gets a head start the vehicle cannot physically recover.</p>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/reference.js"></script>
+</body>
+</html>
