@@ -85,11 +85,11 @@
       </div>
 
       <h2 id="rpm">From force to RPM</h2>
-      <p>The ESCs take RPM, not newtons. The model file gives a propeller law per direction, <span class="m">|F| = K_T\,\rho D^4 (n/60)^2</span> with a thrust coefficient that grows slightly with speed, <span class="m">K_T = a + b\,n</span>. The node inverts it with a few Newton iterations (<code>HardwareConfig::forceToRpm</code>). Reverse thrust is weaker: the propeller is shaped for forward.</p>
+      <p>The ESCs take RPM, not newtons. Talos uses Blue Robotics T200 thrusters, and its force-to-RPM curve comes straight from Blue Robotics' published T200 performance data. The model file stores that data as a propeller law per direction, <span class="m">|F| = K_T\,\rho D^4 (n/60)^2</span>, with a thrust coefficient that grows slightly with speed, <span class="m">K_T = a + b\,n</span>, fitted to the published curve. The node inverts it with a few Newton iterations (<code>HardwareConfig::forceToRpm</code>). Reverse thrust is weaker: the propeller is shaped for forward.</p>
     </div>
     <figure class="fig narrow">
       <div class="panel" id="rpm-chart"></div>
-      <figcaption><b>RPM needed for a given thrust</b>, from Talos's fitted coefficients (D = 76 mm). 24 N takes about 2,450 rpm forward and 2,740 rpm in reverse.</figcaption>
+      <figcaption><b>RPM needed for a given thrust</b>, from the coefficients fitted to Blue Robotics' T200 data (D = 76 mm). 24 N takes about 2,450 rpm forward and 2,740 rpm in reverse.</figcaption>
     </figure>
     <nav class="next" aria-label="Chapter navigation"></nav>
   </article>

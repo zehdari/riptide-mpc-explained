@@ -20,7 +20,7 @@
       <p>The order matters. Each step gives the next one something it can trust.</p>
       <ol>
         <li><strong>Write the model once, and share it.</strong> Implement the Fossen equation (Chapter 1) as a plain function of state and thrust, with an RK4 step. Use the same code in your simulator and your controller, and test that they agree. Every later bug is easier to find when the controller's model is known to be the plant in sim.</li>
-        <li><strong>Get thrust right first.</strong> Measure each thruster on a load cell (force against RPM, both directions), take positions and axes from CAD, build the thruster matrix, and model the delay and lag (Chapter 2). Trust these numbers: identification will attribute everything else to the hydrodynamics.</li>
+        <li><strong>Get thrust right first.</strong> Get a force-against-RPM curve for each direction: the manufacturer's data if it's good (Talos uses Blue Robotics' published T200 curves), or a load-cell test of your own. Take positions and axes from CAD, build the thruster matrix, and model the delay and lag (Chapter 2). Trust these numbers: identification will attribute everything else to the hydrodynamics.</li>
         <li><strong>Weigh it wet.</strong> Mass and COM from a scale, in water if you can. Inertia from CAD is fine.</li>
         <li><strong>Identify the rest in the pool</strong> (below): buoyancy and COB, drag, added mass. Start conservative; a model that is a little wrong is what the disturbance estimate is for.</li>
         <li><strong>Make a reference generator</strong> before tuning anything: a jerk-limited profile with limits well inside what the thrusters can do (Chapter 3). Add a path planner when autonomy needs to string moves together.</li>
