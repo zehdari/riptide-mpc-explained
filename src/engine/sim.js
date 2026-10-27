@@ -51,42 +51,56 @@ export class DisturbanceObserver {
   }
 }
 
-export function makePlantHydro({ buoyancy = 0, cobShift = [0, 0, 0], dragScale = 1 } = {}) {
+export function makePlantHydro({ buoyancy = 0, cobShift = [0, 0, 0], dragScale = 1, massScale = 1, comShift = [0, 0, 0], addedMassScale = [1, 1, 1, 1, 1, 1], inertiaScale = 1 } = {}) {
   // buoyancy: extra net buoyancy [N] the controller's model does not know about; dragScale: plant drag / model drag.
   const extraVolume = buoyancy / (hydro.water_density * 9.80665);
   return {
     ...hydro,
     displaced_volume: hydro.displaced_volume + extraVolume,
-    cob: hydro.cob.map((c, i) => c + cobShift[i]),
+    // A COM moved by comShift leaves the COB where it is, so the COB relative to the COM moves the other way.
+    cob: hydro.cob.map((c, i) => c + cobShift[i] - comShift[i]),
+    com: hydro.com.map((c, i) => c + comShift[i]),
+    mass: hydro.mass * massScale,
+    inertia: hydro.inertia.map((r) => r.map((v) => v * inertiaScale)),
+    added_mass: hydro.added_mass.map((a, i) => a * addedMassScale[i]),
     linear_damping: hydro.linear_damping.map((d) => d * dragScale),
     quadratic_damping: hydro.quadratic_damping.map((d) => d * dragScale),
   };
 }
 
 export class Simulation {
-  constructor({ settings = {}, plantHydro = hydro, depth = -1.0, learn = true } = {}) {
-    this.model = new FossenModel();
+  // plantTweak(model): optional edit of the plant after it is built (thrust scale, thruster lag).
+  constructor({ settings = {}, plantHydro = hydro, modelHydro = hydro, depth = -1.0, learn = true, plantTweak } = {}) {
+    this.model = new FossenModel(modelHydro);
     this.plantModel = new FossenModel(plantHydro);
+    if (plantTweak) plantTweak(this.plantModel);
     this.controller = new MpcController(this.model, settings);
-    this.observer = new DisturbanceObserver(new FossenModel());
+    this.observer = new DisturbanceObserver(new FossenModel(modelHydro));
     this.observer.enabled = learn;
     this.plantActuator = new ThrusterReplica(this.plantModel);
     this.t = 0;
     this.reset(depth);
   }
   reset(depth = -1.0, yaw = 0) {
-    this.x = this.model.fromBaseLink([0, 0, depth], yawQuat(yaw), [0, 0, 0], [0, 0, 0]);
+    this.x = this.plantModel.fromBaseLink([0, 0, depth], yawQuat(yaw), [0, 0, 0], [0, 0, 0]);
     this.plantActuator = new ThrusterReplica(this.plantModel);
     this.controller.actuator = new ThrusterReplica(this.model);
     this.controller.clearWarmStart();
     this.observer.actuator = new ThrusterReplica(this.observer.model);
-    this.observer.reset(this.x);
+    this.observer.reset(this.measured());
     this.t = 0;
     this.last = null;
   }
-  holdHere() {
-    const p = this.model.baseLinkPosition(this.x);
+  // The plant state as the controller sees it: the true base_link pose and twist, put
+  // through the controller's own COM (they differ when the plant's COM is not the model's).
+  measured() {
     const q = [this.x[3], this.x[4], this.x[5], this.x[6]];
+    return this.model.fromBaseLink(this.plantModel.baseLinkPosition(this.x), q, this.plantModel.baseLinkVelocity(this.x), this.x.slice(10));
+  }
+  holdHere() {
+    const m = this.measured();
+    const p = this.model.baseLinkPosition(m);
+    const q = [m[3], m[4], m[5], m[6]];
     return { linear_mode: Mode.POSITION, angular_mode: Mode.POSITION, position: p, orientation: q, path: null };
   }
   tick(reference) {
@@ -95,9 +109,10 @@ export class Simulation {
     for (let i = 0; i < steps; i++) this.x = plantStep(this.plantModel, this.x, this.plantActuator, dt / steps);
     this.t += dt;
     this.controller.advance(dt);
-    const d = this.observer.update(this.x, dt);
+    const measured = this.measured();
+    const d = this.observer.update(measured, dt);
     this.controller.model.disturbance = d.slice();
-    const out = this.controller.compute(this.x, reference);
+    const out = this.controller.compute(measured, reference);
     this.controller.issue(out.command);
     this.observer.actuator.command(out.command);
     this.plantActuator.command(out.command);
@@ -105,7 +120,7 @@ export class Simulation {
     return out;
   }
   basePose() {
-    return { position: this.model.baseLinkPosition(this.x), orientation: [this.x[3], this.x[4], this.x[5], this.x[6]] };
+    return { position: this.plantModel.baseLinkPosition(this.x), orientation: [this.x[3], this.x[4], this.x[5], this.x[6]] };
   }
 }
 

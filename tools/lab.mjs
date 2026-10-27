@@ -1,0 +1,23 @@
+// Drives the model-error lab: COM preset, wait, move, screenshot.
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ executablePath: process.env.HOME + '/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome', args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+const p = await browser.newPage({ viewport: { width: 1400, height: 1000 } });
+const errs = [];
+p.on('pageerror', (e) => errs.push(e.message));
+p.on('console', (m) => m.type() === 'error' && errs.push(m.text()));
+await p.goto(process.argv[2] || 'http://127.0.0.1:5199/riptide-mpc-explained/matters.html', { waitUntil: 'networkidle' });
+await p.locator('#sens-table').scrollIntoViewIfNeeded();
+await p.waitForTimeout(800);
+await p.locator('#sens-table').screenshot({ path: '/tmp/sens_table.png' });
+await p.locator('#lab-charts').scrollIntoViewIfNeeded();
+await p.click('[data-preset="all"]');
+await p.click('[data-speed="4"]');
+await p.waitForTimeout(6000);
+await p.click('[data-move="1.5"]');
+await p.waitForTimeout(6000);
+await p.locator('#lab-sliders').evaluate((el) => el.closest('.panel').scrollIntoView());
+await p.waitForTimeout(500);
+await p.locator('#lab-sliders').evaluate(() => 0);
+await p.locator('.fig:has(#lab-charts)').screenshot({ path: '/tmp/lab.png' });
+console.log(errs.join('\n') || 'ok');
+await browser.close();

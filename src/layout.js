@@ -9,6 +9,7 @@ export const chapters = [
   { href: 'mpc.html', title: 'The optimal control problem' },
   { href: 'solver.html', title: 'Solving it every 50 ms' },
   { href: 'estimation.html', title: 'Feedback and model error' },
+  { href: 'matters.html', title: 'Which numbers matter' },
   { href: 'build.html', title: 'Build your own' },
 ];
 

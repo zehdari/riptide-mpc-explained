@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Which numbers matter · How Talos flies</title>
+<meta name="description" content="Where each of Talos's model parameters comes from (CAD, the lab, Blue Robotics data, the pool), how much each matters, why mass and COM decide setpoint holding while inertia, drag and thrust decide moving, and a live lab for making the model wrong.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 7</div>
+    <h1>Which numbers matter</h1>
+    <p class="lede">A model has dozens of numbers, and they don't all matter at the same time. Holding still depends on a handful you measure in the lab; moving depends on the ones only the pool can tell you.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="sources">Where each number comes from</h2>
+      <p>Before Talos goes in the water for identification, most of its model already exists. The pool session only fits what can't be measured on land, and it fits those <em>around</em> the numbers you give it, so the land numbers have to be right first.</p>
+      <table class="params">
+        <thead><tr><th>Parameter</th><th>Before the pool</th><th>Pool identification</th><th>Matters for</th></tr></thead>
+        <tbody>
+          <tr><td>Thruster positions and axes</td><td>CAD (vehicle YAML)</td><td>trusted</td><td>everything: the thruster matrix</td></tr>
+          <tr><td>Thrust curve (force ↔ RPM)</td><td>Blue Robotics' published T200 data</td><td>optional per-thruster gains, group scale pinned</td><td>moving; a little for holding</td></tr>
+          <tr><td>Thruster delay and lag</td><td>estimated (30 ms, 80/60 ms)</td><td>checked by the inertia lag test</td><td>fast moves, disturbance rejection</td></tr>
+          <tr><td>Mass</td><td>lab: wet weigh-in (34.307 kg)</td><td>trusted</td><td><b>holding</b>: weight against buoyancy</td></tr>
+          <tr><td>Centre of mass</td><td>lab: measured with everything on</td><td>trusted</td><td><b>holding</b>: trim torque, all lever arms</td></tr>
+          <tr><td>Rotational inertia</td><td>CAD</td><td>releases cross-check</td><td>turning</td></tr>
+          <tr><td>Displaced volume (net buoyancy)</td><td>CAD estimate</td><td>statics: holds at several attitudes</td><td><b>holding</b>: depth</td></tr>
+          <tr><td>Centre of buoyancy</td><td>CAD estimate</td><td>statics: tilted holds</td><td><b>holding</b>: trim; righting stiffness</td></tr>
+          <tr><td>Drag, linear and quadratic</td><td>—</td><td>steady runs at several speeds</td><td>moving</td></tr>
+          <tr><td>Added mass</td><td>—</td><td>acceleration windows of the runs; releases</td><td>moving, especially starting and stopping</td></tr>
+          <tr><td>base_link, sensor poses</td><td>CAD</td><td>trusted</td><td>estimation, setpoints</td></tr>
+          <tr><td>Whatever is still wrong</td><td>—</td><td>—</td><td>learned online as the disturbance wrench (Chapter 6)</td></tr>
+        </tbody>
+      </table>
+      <p>The ordering matters because identification is a fit of the <em>difference</em> between what the trusted numbers predict and what the robot does. The statics fit, for example, finds the net buoyancy and the buoyancy moment that balance the thrust at each hold, given the mass and COM you supplied. Change the mass or move the COM afterwards (a new claw, a battery moved) and the fitted volume and COB are now paired with the wrong body; the model file has to be re-expressed for the new one, which is what the comments at the top of <code>talos.yaml</code> record every time it happened.</p>
+
+      <h2 id="holding">Why holding depends on the lab numbers</h2>
+      <p>Write the equation of motion from Chapter 1 for a vehicle holding still. With <span class="m">\boldsymbol\nu = 0</span> and <span class="m">\dot{\boldsymbol\nu} = 0</span>, every term with a velocity or an acceleration in it vanishes: drag, added mass, Coriolis, all of it. What is left is a balance between thrust and the restoring wrench:</p>
+      <div class="M">\mathbf T f_{\text{hold}} = \mathbf g(\boldsymbol\eta) - \hat{\boldsymbol\tau}_d \quad\Longrightarrow\quad \text{heave: } W - B, \qquad \text{trim: } r_b \times B</div>
+      <p>So at a hold, the model's whole job is to know two things: how much Talos weighs against how much it displaces, and where those two forces act relative to each other. Both are differences of large numbers. Weight and buoyancy are each about 337 N, and Talos's net buoyancy is their difference, 1.6 N. A 1% error in either (0.34 kg on the scale, or 0.35 litres of CAD volume) is 3.4 N, twice the true net buoyancy. Likewise the trim torque is 338 N times the horizontal offset between COB and COM: every 5 mm of COM error is 1.7 N·m of pitch the model doesn't know about.</p>
+      <p>The thrust curve matters much less here, because it multiplies the hold thrust, and the hold thrust is small: a few newtons of trim. A 10% curve error at a hold is a fraction of a newton.</p>
+
+      <h2 id="moving">Why moving depends on the pool numbers</h2>
+      <p>While moving, the feedforward of Chapter 4 asks for <span class="m">\boldsymbol\tau = \mathbf M\dot{\boldsymbol\nu} + \mathbf D(\boldsymbol\nu)\boldsymbol\nu + \dots</span>: inertia times acceleration and drag times speed, tens of newtons, all through the thrust curve. Now added mass, drag and the curve decide whether the plan is right, and an error in them is an error in every newton the controller commands. These are also exactly the errors the disturbance estimate can't fix, because its learning is gated off with speed (Chapter 6): it is built to soak up statics, not drag.</p>
+      <p>The numbers below are from the browser port: the simulated Talos differs from the controller's model in one parameter, by an error typical of how that parameter is obtained. The hold runs have disturbance learning off, to show what the error does on its own; the move runs have it on, and move 1.5 m forward after a 20 s hold.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel" id="sens-table"></div>
+      <figcaption><b>One wrong number at a time.</b> Hold: steady error after 20 s holding with learning off. Move: worst distance from the reference during a 1.5 m surge with learning on. Bars are scaled per column. Statics errors decide the hold and don't affect the move once learned; dynamics errors don't affect the hold at all and decide the move.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Three things stand out:</p>
+      <ul>
+        <li><strong>Mass and volume trade one for one.</strong> Their hold errors are identical, because at a hold only <span class="m">W - B</span> matters. That's also why identification fits the volume against a mass you trust: the pool can't tell them apart.</li>
+        <li><strong>COM and COB trade the same way</strong>, with opposite signs. A vertical COB error does nothing at a level hold (the righting torque only appears when tilted), which is why the statics session tilts Talos 25°.</li>
+        <li><strong>The surge added mass is the biggest move error here.</strong> With the 32 kg that <code>talos.yaml</code> carried, tracking error during a surge more than triples. Drag and the thrust curve are next. None of them shows up in a hold at all, so a robot can hold beautifully and still move badly.</li>
+      </ul>
+      <p>In simulation, Talos barely pitches during surge moves even with these errors. In the pool it pitches 5–10° on surge starts, so part of the real robot's behaviour is still outside the model.</p>
+
+      <h2 id="lab">Try it: make the model wrong</h2>
+      <p>Set how wrong the controller's model is about each parameter, then hold or move. The simulated Talos is the plant with your errors; the MPC still flies with the identified model. Changing a setting restarts the run.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel">
+        <div class="controls" style="gap:.4rem .6rem">
+          <span>Presets:</span>
+          <button class="btn" data-preset="exact">Exact model</button>
+          <button class="btn" data-preset="mass">Mass +1%</button>
+          <button class="btn" data-preset="com">COM 5 mm forward</button>
+          <button class="btn" data-preset="added">Old surge added mass</button>
+          <button class="btn" data-preset="all">A bit of everything</button>
+        </div>
+        <div id="lab-sliders" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr));gap:.3rem 1.2rem;font-family:var(--sans);font-size:.86rem;color:var(--ink-2);margin:.4rem 0 .8rem"></div>
+        <div class="controls">
+          <label><input type="checkbox" id="lab-learn" checked> learn the disturbance</label>
+          <button class="btn primary" data-move="1.5">Move 1.5 m forward</button>
+          <button class="btn" data-move="0">Move back</button>
+          <div class="seg" role="group" aria-label="Speed"><button data-speed="1" aria-pressed="true">1×</button><button data-speed="2" aria-pressed="false">2×</button><button data-speed="4" aria-pressed="false">4×</button></div>
+        </div>
+        <div id="lab-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(9rem,1fr));gap:.6rem;font-family:var(--sans);margin:.2rem 0 .8rem"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr));gap:1rem" id="lab-charts"></div>
+      </div>
+      <figcaption><b>The model-error lab.</b> The browser port of the controller flying a plant you have made different from its model. With learning on, watch the learned disturbance converge onto the statics errors and the hold error vanish; then move, and see which errors it can't help with.</figcaption>
+    </figure>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/matters.js"></script>
+</body>
+</html>

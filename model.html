@@ -112,7 +112,7 @@ evolveActuators(force, target, h / 2);</code></pre>
       <p>The prediction rollout uses <span class="m">h = 2</span> ms, the simulator's own step, so in simulation it reproduces the plant to rounding. The Jacobians use a coarser 25 ms model (two steps per 50 ms stage), which is accurate enough for derivatives and twelve times cheaper. Chapter 5 explains where each is used.</p>
       <div class="pool-note">
         <b>From the pool</b>
-        <p>The coefficients on this page are not CAD numbers. Mass and COM come from a wet weigh-in; drag, added mass, buoyancy and COB were fitted from identification runs in the pool (Chapter 7). When the body changes (a new claw, a battery moved), the model file has to be re-expressed or re-identified, because the statics were fitted around a specific mass and COM.</p>
+        <p>The coefficients on this page are not CAD numbers. Mass and COM come from a wet weigh-in; drag, added mass, buoyancy and COB were fitted from identification runs in the pool (Chapter 8; Chapter 7 shows which of them matter when). When the body changes (a new claw, a battery moved), the model file has to be re-expressed or re-identified, because the statics were fitted around a specific mass and COM.</p>
       </div>
     </div>
     <nav class="next" aria-label="Chapter navigation"></nav>

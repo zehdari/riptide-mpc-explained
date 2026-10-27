@@ -1,0 +1,232 @@
+{
+ "rows": [
+  {
+   "id": "baseline",
+   "label": "Exact model",
+   "source": "—",
+   "hold_cm": 0,
+   "hold_deg": 0,
+   "move_cm": 1.08,
+   "move_pitch_deg": 0.01,
+   "end_cm": 0,
+   "peak_thrust": 52.3,
+   "learned": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "mass",
+   "label": "Mass +1% (0.34 kg)",
+   "source": "lab: scale",
+   "hold_cm": 1.12,
+   "hold_deg": 0,
+   "move_cm": 1.09,
+   "move_pitch_deg": 0.01,
+   "end_cm": 0,
+   "peak_thrust": 52.4,
+   "learned": [
+    0,
+    0,
+    -3.36,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "volume",
+   "label": "Displaced volume −1%",
+   "source": "CAD, then pool statics",
+   "hold_cm": 1.13,
+   "hold_deg": 0.04,
+   "move_cm": 1.08,
+   "move_pitch_deg": 0.03,
+   "end_cm": 0,
+   "peak_thrust": 52.4,
+   "learned": [
+    0,
+    0,
+    -3.38,
+    0.01,
+    0.03,
+    0
+   ]
+  },
+  {
+   "id": "com",
+   "label": "COM 5 mm forward",
+   "source": "lab: balance",
+   "hold_cm": 0.44,
+   "hold_deg": 1.74,
+   "move_cm": 1.08,
+   "move_pitch_deg": 0.04,
+   "end_cm": 0,
+   "peak_thrust": 52.3,
+   "learned": [
+    0,
+    0,
+    0,
+    0,
+    1.68,
+    0
+   ]
+  },
+  {
+   "id": "cob",
+   "label": "COB 5 mm forward",
+   "source": "CAD, then pool statics",
+   "hold_cm": 0.15,
+   "hold_deg": 2.18,
+   "move_cm": 1.09,
+   "move_pitch_deg": 0.03,
+   "end_cm": 0,
+   "peak_thrust": 52.1,
+   "learned": [
+    0,
+    0,
+    0,
+    0,
+    -1.69,
+    0
+   ]
+  },
+  {
+   "id": "cobz",
+   "label": "COB 10 mm lower",
+   "source": "CAD, then pool statics",
+   "hold_cm": 0,
+   "hold_deg": 0,
+   "move_cm": 1.08,
+   "move_pitch_deg": 0.03,
+   "end_cm": 0,
+   "peak_thrust": 52.3,
+   "learned": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "thrust",
+   "label": "Thrust curve −10%",
+   "source": "Blue Robotics T200 data",
+   "hold_cm": 0.09,
+   "hold_deg": 0.38,
+   "move_cm": 1.82,
+   "move_pitch_deg": 0.02,
+   "end_cm": 0,
+   "peak_thrust": 57.4,
+   "learned": [
+    0,
+    0,
+    0.18,
+    -0.09,
+    -0.31,
+    0
+   ]
+  },
+  {
+   "id": "onethr",
+   "label": "One thruster −20% (VUS)",
+   "source": "per-thruster gains",
+   "hold_cm": 0.12,
+   "hold_deg": 0.37,
+   "move_cm": 1.35,
+   "move_pitch_deg": 0.7,
+   "end_cm": 0,
+   "peak_thrust": 55.6,
+   "learned": [
+    -0.67,
+    0,
+    0,
+    0,
+    -0.17,
+    -0.28
+   ]
+  },
+  {
+   "id": "inertia",
+   "label": "Rotational inertia +20%",
+   "source": "CAD",
+   "hold_cm": 0,
+   "hold_deg": 0,
+   "move_cm": 1.08,
+   "move_pitch_deg": 0.02,
+   "end_cm": 0,
+   "peak_thrust": 52.3,
+   "learned": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "lag",
+   "label": "Thruster lag ×2",
+   "source": "bench",
+   "hold_cm": 0,
+   "hold_deg": 0,
+   "move_cm": 1.26,
+   "move_pitch_deg": 0.14,
+   "end_cm": 0,
+   "peak_thrust": 54.4,
+   "learned": [
+    -0.02,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "drag",
+   "label": "Drag +30%",
+   "source": "pool: drag runs",
+   "hold_cm": 0,
+   "hold_deg": 0,
+   "move_cm": 2.73,
+   "move_pitch_deg": 0.02,
+   "end_cm": 0.01,
+   "peak_thrust": 60.4,
+   "learned": [
+    -0.02,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  },
+  {
+   "id": "added",
+   "label": "Surge added mass 32 kg (was in talos.yaml)",
+   "source": "pool: inertia fits",
+   "hold_cm": 0,
+   "hold_deg": 0,
+   "move_cm": 3.57,
+   "move_pitch_deg": 0.02,
+   "end_cm": 0.07,
+   "peak_thrust": 51.2,
+   "learned": [
+    0.06,
+    0,
+    0,
+    0,
+    0,
+    0
+   ]
+  }
+ ]
+}
