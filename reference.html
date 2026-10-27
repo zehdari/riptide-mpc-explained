@@ -10,7 +10,7 @@
 <body>
 <main>
   <header class="page-head">
-    <div class="kicker">Chapter 3</div>
+    <div class="kicker">Chapter 4</div>
     <h1>Where to go: profiles and paths</h1>
     <p class="lede">The MPC never chases a setpoint. It follows a reference that moves toward the setpoint at speeds, accelerations and jerks the vehicle can actually produce, and that arrives exactly, with nothing left to overshoot.</p>
   </header>
@@ -18,7 +18,7 @@
     <div class="prose">
       <h2 id="why">Why not just step the setpoint?</h2>
       <p>Hand an MPC a target two metres away and it does what its cost function says: get there as fast as the thrust allows, because every stage spent away from the target costs position error. That means full thrust, a hard stop, and on a vehicle with 30 ms of delay and an imperfect model, overshoot. It also means the MPC's plan changes completely every time autonomy nudges the goal.</p>
-      <p>riptide_mpc separates <em>where to go</em> from <em>how to get there</em>. A reference generator turns each goal into a smooth trajectory with bounded speed, acceleration and jerk. Each tick, the MPC gets 30 samples of that trajectory, one per stage, with the position, velocity, acceleration and their angular counterparts, and tracks them. The velocity and acceleration matter as much as the position: they feed the effort term and the feedforward thrust (Chapter 4), so following the reference costs nothing and lagging it does.</p>
+      <p>riptide_mpc separates <em>where to go</em> from <em>how to get there</em>. A reference generator turns each goal into a smooth trajectory with bounded speed, acceleration and jerk. Each tick, the MPC gets 30 samples of that trajectory, one per stage, with the position, velocity, acceleration and their angular counterparts, and tracks them. The velocity and acceleration matter as much as the position: they feed the effort term and the feedforward thrust (Chapter 5), so following the reference costs nothing and lagging it does.</p>
 
       <h2 id="scurve">The S-curve</h2>
       <p><a href="https://github.com/osu-uwrt/riptide_control/blob/mpc/riptide_mpc/src/motion_profile.cpp"><code>motion_profile.cpp</code></a> moves the reference with piecewise-constant jerk: jerk is the control input of a triple integrator, and the profile picks it every 2 ms substep. The rule is greedy and simple:</p>

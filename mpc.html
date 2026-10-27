@@ -10,7 +10,7 @@
 <body>
 <main>
   <header class="page-head">
-    <div class="kicker">Chapter 4</div>
+    <div class="kicker">Chapter 5</div>
     <h1>The optimal control problem</h1>
     <p class="lede">Every 50 ms the controller asks one question: which thrust, for each of the next 30 intervals, keeps Talos closest to its reference without wasting effort? This chapter writes that question down exactly.</p>
   </header>
@@ -21,7 +21,7 @@
       <div class="M">\begin{aligned} \min_{U}\quad & \sum_{k=1}^{N} w_k\, \big\| y_k(x_k) \big\|^2_{Q} \;+\; \sum_{k=0}^{N-1} r\,\big\| u_k - u^{\text{ff}}_k \big\|^2 \\ & \;+\; \sum_{k=0}^{N-1} r_\Delta \big\| (u_k - u^{\text{ff}}_k) - (u_{k-1} - u^{\text{ff}}_{k-1}) \big\|^2 \\[4pt] \text{s.t.}\quad & x_0 = \Phi_{\text{delay}}(\hat x), \quad x_{k+1} = F(x_k, u_k), \quad |u_k| \le 24\ \text{N} \end{aligned}</div>
       <p>Each piece has a job:</p>
       <ul>
-        <li><span class="m">F</span> is one 50 ms stage of the Fossen model with the thruster lag, the step from Chapter 1 run 25 times with <span class="m">u_k</span> held. It is nonlinear, which is why Chapter 5 exists.</li>
+        <li><span class="m">F</span> is one 50 ms stage of the Fossen model with the thruster lag, the step from Chapter 1 run 25 times with <span class="m">u_k</span> held. It is nonlinear, which is why Chapter 6 exists.</li>
         <li><span class="m">y_k</span> is a 12-vector of tracking errors against the reference at the end of stage <span class="m">k</span>, weighted by the diagonal <span class="m">Q</span>; <span class="m">w_k = 1</span> except the terminal stage, <span class="m">w_N = 5</span>.</li>
         <li>Effort and smoothness are measured from <span class="m">u^{\text{ff}}_k</span>, the thrust that inverse dynamics says the reference needs. Following the reference is free; only deviating from it costs.</li>
         <li><span class="m">x_0</span> is not the measured state but where the vehicle will be when this command takes effect, 30 ms from now.</li>
@@ -42,7 +42,7 @@
       <figcaption><b>The optimal control problem as a factor graph.</b> Hover a command <span class="m">u_k</span>: its effect flows down the chain of states, so it touches every tracking cost after it but none before. Switch to the condensed view to see the problem the solver actually works with: the states are gone, replaced by edges from each command to every later cost.</figcaption>
     </figure>
     <div class="prose">
-      <p>That second picture is the whole design choice of Chapter 5 in miniature. Because <span class="m">x_0</span> is fixed and every later state is a function of the commands, the states can be eliminated (<em>condensing</em>), leaving an unconstrained-dynamics problem in the 240 commands alone. The price is that the graph becomes dense: command <span class="m">u_0</span> is now connected to all 30 costs, and the Hessian couples every pair of stages.</p>
+      <p>That second picture is the whole design choice of Chapter 6 in miniature. Because <span class="m">x_0</span> is fixed and every later state is a function of the commands, the states can be eliminated (<em>condensing</em>), leaving an unconstrained-dynamics problem in the 240 commands alone. The price is that the graph becomes dense: command <span class="m">u_0</span> is now connected to all 30 costs, and the Hessian couples every pair of stages.</p>
 
       <h2 id="state">The state and the decisions</h2>
       <p>The prediction state is the 13-number body state of Chapter 1 plus the eight realized thruster forces:</p>
@@ -50,7 +50,7 @@
       <p>The forces are states because the thrusters lag (Chapter 2): a command sets the target that <span class="m">f</span> moves toward. Perturbations of <span class="m">\tilde x</span> live on its tangent space, three numbers for attitude instead of four, so the linearized state has 12 + 8 = 20 dimensions. The commands <span class="m">u_k \in [-24, 24]^8</span> are the only decision variables. On Talos that is 30 × 8 = 240 numbers.</p>
 
       <h2 id="errors">What "close to the reference" means</h2>
-      <p>The error vector compares the predicted state at the end of each stage with the reference profile sampled at the same instant (Chapter 3). For position-mode control:</p>
+      <p>The error vector compares the predicted state at the end of each stage with the reference profile sampled at the same instant (Chapter 4). For position-mode control:</p>
       <div class="M">y_k = \begin{bmatrix} p_b - p_{\text{ref}} \\ \operatorname{Log}\!\big(q_{\text{ref}}^{-1} \otimes q\big) \\ v_b - R(q)^\top v_{\text{ref}} \\ \omega - R(q)^\top \omega_{\text{ref}} \end{bmatrix} \in \R^{12}</div>
       <p>Position and velocity are those of <code>base_link</code>, not the COM (<span class="m">p_b = p + R(q) r_{bl}</span>, <span class="m">v_b = v + \omega \times r_{bl}</span>), because that is the point the setpoints are about. The attitude error is the rotation vector of the relative rotation, which is a proper distance on rotations: small, smooth, and the same in every direction, with none of the wrap-around or gimbal problems of differencing Euler angles. Velocities are compared in the body frame.</p>
       <p>The weights depend on the mode each half of the command is in:</p>
@@ -103,7 +103,7 @@ Point x0{measured, actuator_.forces()};
 
     <div class="prose">
       <h2 id="receding">Receding horizon</h2>
-      <p>Of the 240 numbers it solves for, the controller uses eight. The rest are a plan it throws away 50 ms later, except as next tick's starting guess (Chapter 5). In the plot below each thin green curve is the position the controller predicted at one tick, 1.5 s ahead.</p>
+      <p>Of the 240 numbers it solves for, the controller uses eight. The rest are a plan it throws away 50 ms later, except as next tick's starting guess (Chapter 6). In the plot below each thin green curve is the position the controller predicted at one tick, 1.5 s ahead.</p>
     </div>
     <figure class="fig">
       <div class="panel" id="fan"></div>

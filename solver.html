@@ -10,9 +10,9 @@
 <body>
 <main>
   <header class="page-head">
-    <div class="kicker">Chapter 5</div>
+    <div class="kicker">Chapter 6</div>
     <h1>Solving it every 50 ms</h1>
-    <p class="lede">The problem of Chapter 4 is nonlinear and has 240 unknowns. riptide_mpc solves it with one Gauss–Newton step per tick, on a QP small enough to factor densely, warm-started from the last plan. In C++ that takes about 11 ms.</p>
+    <p class="lede">The problem of Chapter 5 is nonlinear and has 240 unknowns. riptide_mpc solves it with one Gauss–Newton step per tick, on a QP small enough to factor densely, warm-started from the last plan. In C++ that takes about 11 ms.</p>
   </header>
   <article>
     <div class="prose">
@@ -43,7 +43,7 @@
       <p class="eq-note">A<sub>k</sub> is 20 × 20 (state to state), B<sub>k</sub> is 20 × 8 (commands to state).</p>
       <p>riptide_mpc gets <span class="m">A_k</span> and <span class="m">B_k</span> column by column: perturb one coordinate by <span class="m">\varepsilon = 10^{-6}</span>, run the stage, take the difference. That is 20 + 8 = 28 extra stage simulations per stage, 840 per tick. They use a coarse model (two 25 ms steps per stage, no deadband or saturation in the thruster target, so derivatives are smooth), which makes them cheap. The nominal rollout and the published prediction use the fine 2 ms step.</p>
       <p>Finite differences are crude next to automatic differentiation, but they have a decisive advantage here: the Jacobian is of <em>exactly</em> the code that runs, including the thruster lag, the submergence factors, the learned disturbance and the RK4 scheme, with no second implementation to keep in sync.</p>
-      <p>The error vector <span class="m">y_k</span> of Chapter 4 is linearized the same way, giving <span class="m">C_k = \partial y_k / \partial x \in \R^{12\times 20}</span> at the end of each stage.</p>
+      <p>The error vector <span class="m">y_k</span> of Chapter 5 is linearized the same way, giving <span class="m">C_k = \partial y_k / \partial x \in \R^{12\times 20}</span> at the end of each stage.</p>
 
       <h2 id="condensing">Condensing: from a chain to a dense QP</h2>
       <p>Stack all command changes into <span class="m">\delta U \in \R^{240}</span>. The change in predicted state at the end of stage <span class="m">k</span> is linear in them, <span class="m">\delta x_{k+1} = P_{k+1}\, \delta U</span>, with the sensitivity matrices built by one forward pass:</p>
@@ -96,7 +96,7 @@ VectorXd U = warm_.cwiseMax(lb_).cwiseMin(ub_);</code></pre>
     </div>
     <figure class="fig">
       <div class="panel"><div class="cols" id="rti-charts"></div></div>
-      <figcaption><b>Solver effort.</b> Left: solve time per tick of the C++ controller on Cam-PC over the 7.2 m path in Nereus (median 11 ms; the controller has 50 ms). Right: QP iterations per tick in the browser port during the hard 8 m surge from Chapter 3, where thrusters run into their limits. While nothing saturates, one iteration is exact (every tick of the path needed only one); with many active bounds it takes up to five.</figcaption>
+      <figcaption><b>Solver effort.</b> Left: solve time per tick of the C++ controller on Cam-PC over the 7.2 m path in Nereus (median 11 ms; the controller has 50 ms). Right: QP iterations per tick in the browser port during the hard 8 m surge from Chapter 4, where thrusters run into their limits. While nothing saturates, one iteration is exact (every tick of the path needed only one); with many active bounds it takes up to five.</figcaption>
     </figure>
     <div class="prose">
       <h2 id="cost">Where the time goes</h2>

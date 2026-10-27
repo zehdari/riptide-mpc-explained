@@ -5,11 +5,11 @@ export const chapters = [
   { href: 'index.html', title: 'Overview' },
   { href: 'model.html', title: 'The Fossen model' },
   { href: 'thrusters.html', title: 'Thrusters and allocation' },
+  { href: 'matters.html', title: 'Which numbers matter' },
   { href: 'reference.html', title: 'Where to go: profiles and paths' },
   { href: 'mpc.html', title: 'The optimal control problem' },
   { href: 'solver.html', title: 'Solving it every 50 ms' },
   { href: 'estimation.html', title: 'Feedback and model error' },
-  { href: 'matters.html', title: 'Which numbers matter' },
   { href: 'build.html', title: 'Build your own' },
 ];
 

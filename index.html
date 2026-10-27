@@ -74,7 +74,7 @@
 
       <h2 id="why" data-short="Why a nonlinear MPC">Why a nonlinear MPC</h2>
       <p>An AUV has a few properties that make a predictive controller worth its cost. The thrusters are coupled: no single thruster moves Talos along one axis, so every motion is a blend of all eight. Thrust is bounded, per thruster and in total, and a controller that knows the bounds can plan around them instead of saturating. Thrust is late: 30 ms of delay plus an 80 ms spin-up lag is two control ticks before a command has mostly arrived. And the physics is well understood: the Fossen model of a rigid body in water predicts Talos's motion over a couple of seconds well enough to plan with.</p>
-      <p>It is a <strong>nonlinear</strong> MPC because it predicts with the full nonlinear Fossen model: quadratic drag, Coriolis and buoyancy that depends on attitude, plus the quaternion attitude itself. A linear MPC would fix one linearization (say, about a level hover) and plan with that forever, which is wrong as soon as Talos is moving fast, turning or tilted. riptide_mpc instead rolls the nonlinear model forward every tick and relinearizes along that predicted trajectory. It then takes one Gauss–Newton step of the nonlinear problem, a sequential quadratic programming (SQP) step in the real-time iteration scheme (Chapter 5). Each QP is linear-quadratic; the problem it is solving is not.</p>
+      <p>It is a <strong>nonlinear</strong> MPC because it predicts with the full nonlinear Fossen model: quadratic drag, Coriolis and buoyancy that depends on attitude, plus the quaternion attitude itself. A linear MPC would fix one linearization (say, about a level hover) and plan with that forever, which is wrong as soon as Talos is moving fast, turning or tilted. riptide_mpc instead rolls the nonlinear model forward every tick and relinearizes along that predicted trajectory. It then takes one Gauss–Newton step of the nonlinear problem, a sequential quadratic programming (SQP) step in the real-time iteration scheme (Chapter 6). Each QP is linear-quadratic; the problem it is solving is not.</p>
       <p>The price is computation and a model you have to identify. riptide_mpc pays the first with a careful formulation (a small dense QP, one Newton step of the nonlinear problem per tick) and the second with pool identification runs and an online disturbance estimate that soaks up what the model gets wrong.</p>
 
       <h2 id="files">Where things live in the code</h2>
@@ -85,14 +85,14 @@
           <tr><td><code>marine_dynamics.cpp</code></td><td>Fossen rigid body in water: mass, Coriolis, damping, buoyancy. Shared with the simulator.</td><td><a href="model.html">1</a></td></tr>
           <tr><td><code>fossen_model.cpp</code></td><td>Builds the model from the vehicle and model YAML files, thruster matrix, RK4 step, base_link ↔ COM.</td><td><a href="model.html">1</a>, <a href="thrusters.html">2</a></td></tr>
           <tr><td><code>thruster_dynamics.cpp</code></td><td>Thruster delay queue, rise/fall lag, slew, limits.</td><td><a href="thrusters.html">2</a></td></tr>
-          <tr><td><code>motion_profile.cpp</code></td><td>Jerk-limited S-curve reference for position and attitude.</td><td><a href="reference.html">3</a></td></tr>
-          <tr><td><code>path_plan.cpp</code></td><td>Lines, arcs and rounded corners as one curve with a speed envelope.</td><td><a href="reference.html">3</a></td></tr>
-          <tr><td><code>mpc.cpp</code></td><td>The controller: delay compensation, feedforward, linearization, condensed QP, governor.</td><td><a href="mpc.html">4</a>, <a href="solver.html">5</a></td></tr>
-          <tr><td><code>box_qp.cpp</code></td><td>Projected Newton solver for the box-constrained QP.</td><td><a href="solver.html">5</a></td></tr>
-          <tr><td><code>state_estimator.cpp</code></td><td>Model-based observer and the offset-free disturbance estimate.</td><td><a href="estimation.html">6</a></td></tr>
-          <tr><td><code>settle_trust.hpp</code></td><td>The "has it settled?" signal autonomy waits on.</td><td><a href="estimation.html">6</a></td></tr>
+          <tr><td><code>motion_profile.cpp</code></td><td>Jerk-limited S-curve reference for position and attitude.</td><td><a href="reference.html">4</a></td></tr>
+          <tr><td><code>path_plan.cpp</code></td><td>Lines, arcs and rounded corners as one curve with a speed envelope.</td><td><a href="reference.html">4</a></td></tr>
+          <tr><td><code>mpc.cpp</code></td><td>The controller: delay compensation, feedforward, linearization, condensed QP, governor.</td><td><a href="mpc.html">5</a>, <a href="solver.html">6</a></td></tr>
+          <tr><td><code>box_qp.cpp</code></td><td>Projected Newton solver for the box-constrained QP.</td><td><a href="solver.html">6</a></td></tr>
+          <tr><td><code>state_estimator.cpp</code></td><td>Model-based observer and the offset-free disturbance estimate.</td><td><a href="estimation.html">7</a></td></tr>
+          <tr><td><code>settle_trust.hpp</code></td><td>The "has it settled?" signal autonomy waits on.</td><td><a href="estimation.html">7</a></td></tr>
           <tr><td><code>identification.cpp</code>, <code>pool_identify_node.cpp</code></td><td>Flies identification maneuvers in the pool and fits the model.</td><td><a href="build.html">8</a></td></tr>
-          <tr><td><code>mpc_controller_node.cpp</code></td><td>The ROS 2 node: topics, the 20 Hz tick, FollowPath action, RPM output.</td><td><a href="estimation.html">6</a></td></tr>
+          <tr><td><code>mpc_controller_node.cpp</code></td><td>The ROS 2 node: topics, the 20 Hz tick, FollowPath action, RPM output.</td><td><a href="estimation.html">7</a></td></tr>
         </tbody>
       </table>
 

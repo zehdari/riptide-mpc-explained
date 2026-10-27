@@ -10,9 +10,10 @@
 <body>
 <main>
   <header class="page-head">
-    <div class="kicker">Chapter 7</div>
+    <div class="kicker">Chapter 3</div>
     <h1>Which numbers matter</h1>
     <p class="lede">A model has dozens of numbers, and they don't all matter at the same time. Holding still depends on a handful you measure in the lab; moving depends on the ones only the pool can tell you.</p>
+    <p class="lede" style="font-size:1.05rem;margin-top:.6rem">Two ideas from later chapters, in a sentence each. The controller plans around a <strong>feedforward</strong>: the thrust its model says the reference motion needs (Chapter 5). And it learns, online, a constant <strong>disturbance wrench</strong> for whatever its model gets wrong at rest, so static errors fade over about ten seconds (Chapter 7).</p>
   </header>
   <article>
     <div class="prose">
@@ -32,7 +33,7 @@
           <tr><td>Drag, linear and quadratic</td><td>—</td><td>steady runs at several speeds</td><td>moving</td></tr>
           <tr><td>Added mass</td><td>—</td><td>acceleration windows of the runs; releases</td><td>moving, especially starting and stopping</td></tr>
           <tr><td>base_link, sensor poses</td><td>CAD</td><td>trusted</td><td>estimation, setpoints</td></tr>
-          <tr><td>Whatever is still wrong</td><td>—</td><td>—</td><td>learned online as the disturbance wrench (Chapter 6)</td></tr>
+          <tr><td>Whatever is still wrong</td><td>—</td><td>—</td><td>learned online as the disturbance wrench (Chapter 7)</td></tr>
         </tbody>
       </table>
       <p>The ordering matters because identification is a fit of the <em>difference</em> between what the trusted numbers predict and what the robot does. The statics fit, for example, finds the net buoyancy and the buoyancy moment that balance the thrust at each hold, given the mass and COM you supplied. Change the mass or move the COM afterwards (a new claw, a battery moved) and the fitted volume and COB are now paired with the wrong body; the model file has to be re-expressed for the new one, which is what the comments at the top of <code>talos.yaml</code> record every time it happened.</p>
@@ -44,7 +45,7 @@
       <p>The thrust curve matters much less here, because it multiplies the hold thrust, and the hold thrust is small: a few newtons of trim. A 10% curve error at a hold is a fraction of a newton.</p>
 
       <h2 id="moving">Why moving depends on the pool numbers</h2>
-      <p>While moving, the feedforward of Chapter 4 asks for <span class="m">\boldsymbol\tau = \mathbf M\dot{\boldsymbol\nu} + \mathbf D(\boldsymbol\nu)\boldsymbol\nu + \dots</span>: inertia times acceleration and drag times speed, tens of newtons, all through the thrust curve. Now added mass, drag and the curve decide whether the plan is right, and an error in them is an error in every newton the controller commands. These are also exactly the errors the disturbance estimate can't fix, because its learning is gated off with speed (Chapter 6): it is built to soak up statics, not drag.</p>
+      <p>While moving, the feedforward of Chapter 5 asks for <span class="m">\boldsymbol\tau = \mathbf M\dot{\boldsymbol\nu} + \mathbf D(\boldsymbol\nu)\boldsymbol\nu + \dots</span>: inertia times acceleration and drag times speed, tens of newtons, all through the thrust curve. Now added mass, drag and the curve decide whether the plan is right, and an error in them is an error in every newton the controller commands. These are also exactly the errors the disturbance estimate can't fix, because its learning is gated off with speed (Chapter 7): it is built to soak up statics, not drag.</p>
       <p>The numbers below are from the browser port: the simulated Talos differs from the controller's model in one parameter, by an error typical of how that parameter is obtained. The hold runs have disturbance learning off, to show what the error does on its own; the move runs have it on, and move 1.5 m forward after a 20 s hold.</p>
     </div>
     <figure class="fig">

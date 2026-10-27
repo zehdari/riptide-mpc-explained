@@ -37,7 +37,7 @@
       <p>The dynamics is Newton and Euler for a rigid body, plus the water. In Fossen's matrix form, with everything expressed in the body frame at the COM:</p>
       <div class="M">\mathbf M\,\dot{\boldsymbol\nu} + \mathbf C_{RB}(\boldsymbol\nu)\boldsymbol\nu + \mathbf C_A(\boldsymbol\nu_r)\boldsymbol\nu_r + \mathbf D(\boldsymbol\nu_r)\boldsymbol\nu_r + \mathbf g(\boldsymbol\eta) = \boldsymbol\tau_{\text{thrust}} + \boldsymbol\tau_{d}, \qquad \mathbf M = \mathbf M_{RB} + \mathbf M_A</div>
       <p class="eq-note">ν<sub>r</sub> = ν − ν<sub>c</sub> is the velocity relative to the water. The pool has no current, so ν<sub>r</sub> = ν here, but the code keeps the general form.</p>
-      <p>Read left to right: inertia (the body's and the water it drags along), Coriolis and centripetal effects of moving in a rotating frame, hydrodynamic drag, then gravity and buoyancy. On the right are the thrusters and <span class="m">\boldsymbol\tau_d</span>, a disturbance wrench the estimator learns online to absorb model error (Chapter 6). Solving for the acceleration gives what the integrator needs:</p>
+      <p>Read left to right: inertia (the body's and the water it drags along), Coriolis and centripetal effects of moving in a rotating frame, hydrodynamic drag, then gravity and buoyancy. On the right are the thrusters and <span class="m">\boldsymbol\tau_d</span>, a disturbance wrench the estimator learns online to absorb model error (Chapter 7). Solving for the acceleration gives what the integrator needs:</p>
       <div class="M">\dot{\boldsymbol\nu} = \mathbf M^{-1}\big(\boldsymbol\tau_{\text{thrust}} + \boldsymbol\tau_d - \mathbf C_{RB}(\boldsymbol\nu)\boldsymbol\nu - \mathbf C_A(\boldsymbol\nu)\boldsymbol\nu - \mathbf D(\boldsymbol\nu)\boldsymbol\nu - \mathbf g(\boldsymbol\eta)\big)</div>
       <p>Below, every term is evaluated by the browser's copy of the model at whatever motion you dial in. Watch which terms matter at Talos's speeds.</p>
     </div>
@@ -74,7 +74,7 @@
       <h3 id="damping">Damping</h3>
       <p>Drag is modelled per axis as linear plus quadratic in the relative velocity. Both matrices are diagonal for Talos:</p>
       <div class="M">\mathbf D(\boldsymbol\nu)\boldsymbol\nu = \mathbf D_l\, \boldsymbol\nu + \mathbf D_q\, |\boldsymbol\nu| \circ \boldsymbol\nu</div>
-      <p>The quadratic term dominates above walking pace. Drag also explains a limit you will meet later: the thrusters can deliver at most 73 N in total (the power budget), and surge drag reaches 73 N at 0.54 m/s. The controller's speed limit of 0.6 m/s is above what the model can sustain, so on a long straight move the reference governor (Chapter 3) has to slow the reference down.</p>
+      <p>The quadratic term dominates above walking pace. Drag also explains a limit you will meet later: the thrusters can deliver at most 73 N in total (the power budget), and surge drag reaches 73 N at 0.54 m/s. The controller's speed limit of 0.6 m/s is above what the model can sustain, so on a long straight move the reference governor (Chapter 4) has to slow the reference down.</p>
     </div>
     <figure class="fig">
       <div class="panel" id="drag-chart"></div>
@@ -109,10 +109,10 @@
 evolveActuators(force, target, h / 2);
 rk4(x, h, [&](const State13d &s) { <span class="k">return</span> derivative(s, force); });
 evolveActuators(force, target, h / 2);</code></pre>
-      <p>The prediction rollout uses <span class="m">h = 2</span> ms, the simulator's own step, so in simulation it reproduces the plant to rounding. The Jacobians use a coarser 25 ms model (two steps per 50 ms stage), which is accurate enough for derivatives and twelve times cheaper. Chapter 5 explains where each is used.</p>
+      <p>The prediction rollout uses <span class="m">h = 2</span> ms, the simulator's own step, so in simulation it reproduces the plant to rounding. The Jacobians use a coarser 25 ms model (two steps per 50 ms stage), which is accurate enough for derivatives and twelve times cheaper. Chapter 6 explains where each is used.</p>
       <div class="pool-note">
         <b>From the pool</b>
-        <p>The coefficients on this page are not CAD numbers. Mass and COM come from a wet weigh-in; drag, added mass, buoyancy and COB were fitted from identification runs in the pool (Chapter 8; Chapter 7 shows which of them matter when). When the body changes (a new claw, a battery moved), the model file has to be re-expressed or re-identified, because the statics were fitted around a specific mass and COM.</p>
+        <p>The coefficients on this page are not CAD numbers. Mass and COM come from a wet weigh-in; drag, added mass, buoyancy and COB were fitted from identification runs in the pool (Chapter 8; Chapter 3 shows which of them matter when). When the body changes (a new claw, a battery moved), the model file has to be re-expressed or re-identified, because the statics were fitted around a specific mass and COM.</p>
       </div>
     </div>
     <nav class="next" aria-label="Chapter navigation"></nav>
