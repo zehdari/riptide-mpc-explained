@@ -10,7 +10,7 @@
   --paper-3: #dbe7e9;
   --ink: #0f2633;
   --ink-2: #3f5b67;
-  --muted: #6f8893;
+  --muted: #546d79;
   --rule: #cbdadd;
   --accent: #d9480f; /* safety orange: things you can touch */
   --water: #cfe7ec;
@@ -51,11 +51,11 @@ a { color: inherit; text-decoration-color: var(--accent); text-decoration-thickn
 a:hover { color: var(--accent); }
 :focus-visible { outline: 2.5px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
 
-h1, h2, h3, h4 { font-family: var(--sans); font-stretch: 118%; letter-spacing: -0.01em; line-height: 1.12; margin: 0; }
+h1, h2, h3, h4 { text-wrap: balance; font-family: var(--sans); font-stretch: 118%; letter-spacing: -0.01em; line-height: 1.12; margin: 0; }
 h1 { font-size: clamp(2.4rem, 5vw, 4rem); font-weight: 760; font-stretch: 125%; }
 h2 { font-size: clamp(1.6rem, 3vw, 2.15rem); font-weight: 720; margin-top: 3.2rem; margin-bottom: 0.9rem; }
-h3 { font-size: 1.28rem; font-weight: 680; margin-top: 2.2rem; margin-bottom: 0.5rem; font-stretch: 110%; }
-p { margin: 0 0 1.05em; }
+h3 { font-size: 1.5rem; font-weight: 680; margin-top: 2.2rem; margin-bottom: 0.5rem; font-stretch: 110%; }
+p { margin: 0 0 1.05em; text-wrap: pretty; }
 strong { font-weight: 650; }
 code { font-family: var(--mono); font-size: 0.82em; background: var(--paper-2); padding: 0.08em 0.3em; border-radius: 3px; }
 pre { font-family: var(--mono); font-size: 0.8rem; line-height: 1.55; background: #0f2633; color: #dce9ec; padding: 1rem 1.2rem; border-radius: 6px; overflow-x: auto; margin: 1.2rem 0 1.6rem; }
@@ -105,7 +105,7 @@ figure.fig { margin: 2rem 0 2.4rem; max-width: var(--wide); }
 figure.fig.narrow { max-width: var(--measure); }
 .fig .panel { background: var(--paper-2); border-radius: 10px; padding: 1.1rem 1.2rem 1rem; position: relative; }
 .fig .panel.flush { padding: 0; overflow: hidden; }
-figcaption { font-family: var(--sans); font-size: 0.88rem; line-height: 1.45; color: var(--ink-2); margin-top: 0.7rem; max-width: var(--measure); }
+figcaption { font-family: var(--sans); font-size: 0.88rem; line-height: 1.45; color: var(--ink-2); margin-top: 0.7rem; max-width: 31rem; text-wrap: pretty; }
 figcaption b { color: var(--ink); font-weight: 650; }
 .controls { display: flex; flex-wrap: wrap; gap: 0.5rem 1.3rem; align-items: center; font-family: var(--sans); font-size: 0.86rem; color: var(--ink-2); margin-bottom: 0.8rem; }
 .controls label { display: inline-flex; align-items: center; gap: 0.5rem; }
@@ -132,11 +132,11 @@ input[type='range'] { accent-color: var(--accent); width: 8.5rem; }
 
 /* chart svg */
 svg.chart { display: block; width: 100%; height: auto; overflow: visible; font-family: var(--sans); }
-svg.chart .axis text { fill: var(--muted); font-size: 11px; }
+svg.chart .axis text { fill: var(--muted); font-size: 12px; }
 svg.chart .axis line, svg.chart .axis path { stroke: var(--rule); }
 svg.chart .grid line { stroke: var(--grid); }
 svg.chart .title { fill: var(--ink); font-size: 12.5px; font-weight: 600; }
-svg.chart .label { fill: var(--ink-2); font-size: 11.5px; }
+svg.chart .label { fill: var(--ink-2); font-size: 12px; }
 svg.chart .crosshair { stroke: var(--ink-2); stroke-width: 1; }
 .tip {
   position: absolute; pointer-events: none; z-index: 5;
@@ -152,8 +152,9 @@ svg.chart .crosshair { stroke: var(--ink-2); stroke-width: 1; }
 .eq-note { font-family: var(--sans); font-size: 0.86rem; color: var(--ink-2); margin-top: -0.6rem; }
 
 /* callouts: lessons from the pool */
-.pool-note { border-left: 3px solid var(--accent); padding: 0.2rem 0 0.2rem 1.1rem; margin: 1.6rem 0; }
-.pool-note > b:first-child { display: block; font-family: var(--sans); font-size: 0.92rem; margin-bottom: 0.25rem; }
+.pool-note { background: var(--paper-2); border-radius: 8px; padding: 0.9rem 1.15rem 1rem; margin: 1.6rem 0; }
+.pool-note > b:first-child { display: flex; align-items: center; gap: 0.5rem; font-family: var(--sans); font-size: 0.92rem; margin-bottom: 0.3rem; }
+.pool-note > b:first-child::before { content: ''; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--accent); }
 .pool-note p:last-child { margin-bottom: 0; }
 
 .src { font-family: var(--sans); font-size: 0.84rem; color: var(--ink-2); }
@@ -177,13 +178,13 @@ table.params code { font-size: 0.8rem; }
 svg.graph { display: block; width: 100%; height: auto; font-family: var(--sans); overflow: visible; }
 svg.graph .node rect, svg.graph .node circle { fill: var(--paper); stroke: var(--ink); stroke-width: 1.5; }
 svg.graph .node text { fill: var(--ink); font-size: 12.5px; text-anchor: middle; dominant-baseline: central; }
-svg.graph .node .sub { fill: var(--muted); font-size: 10.5px; }
+svg.graph .node .sub { fill: var(--muted); font-size: 11.5px; }
 svg.graph .node.dim { opacity: 0.25; }
 svg.graph .node.hot rect, svg.graph .node.hot circle { stroke: var(--accent); stroke-width: 2.2; }
 svg.graph .edge { stroke: var(--ink-2); stroke-width: 1.4; fill: none; }
 svg.graph .edge.dim { opacity: 0.15; }
 svg.graph .edge.hot { stroke: var(--accent); stroke-width: 2.2; }
-svg.graph .elabel { fill: var(--muted); font-size: 10.5px; text-anchor: middle; }
+svg.graph .elabel { fill: var(--muted); font-size: 11.5px; text-anchor: middle; }
 svg.graph .pulse { fill: var(--accent); }
 
 /* ---------- hero ---------- */

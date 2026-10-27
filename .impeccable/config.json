@@ -1,0 +1,89 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "index.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.697Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "model.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.701Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "thrusters.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.705Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "reference.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.710Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "mpc.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.713Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "solver.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.717Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "estimation.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.722Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "flat-type-hierarchy",
+        "value": "*",
+        "files": [
+          "build.html"
+        ],
+        "createdAt": "2026-10-27T21:48:25.726Z",
+        "reason": "agent: false positive; CSS is imported by JS (Vite) so the static scan sees 16px for every role; rendered scan (impeccable detect on the dev server) shows h1 64px, h2 34px, body 19px and no finding"
+      },
+      {
+        "rule": "repeating-stripes-gradient",
+        "value": "*",
+        "files": [
+          "src/style.css"
+        ],
+        "createdAt": "2026-10-27T21:48:25.730Z",
+        "reason": "agent: .legend i.dash is the dashed-line legend key that identifies dashed reference series in charts (data encoding, not decoration)"
+      }
+    ]
+  }
+}
