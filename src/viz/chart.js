@@ -106,6 +106,10 @@ export class LineChart {
     const plot = el('g', { 'clip-path': `url(#${clipId})` }, svg);
     for (const s of this.series) {
       if (!s.values.length) continue;
+      if (s.points) { // scatter: small dots, no line
+        for (const p of s.values) el('circle', { cx: sx(p.x).toFixed(1), cy: sy(p.y).toFixed(1), r: s.r || 2.2, fill: s.color, opacity: s.opacity ?? 0.45 }, plot);
+        continue;
+      }
       const d = s.values.map((p, i) => `${i ? 'L' : 'M'}${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join('');
       if (s.area) el('path', { d: `${d}L${sx(s.values.at(-1).x)},${sy(Math.max(y0, 0))}L${sx(s.values[0].x)},${sy(Math.max(y0, 0))}Z`, fill: s.color, opacity: 0.1 }, plot);
       el('path', { d, fill: 'none', stroke: s.color, 'stroke-width': s.width || 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', 'stroke-dasharray': s.dash ? '5 4' : '', opacity: s.opacity ?? 1 }, plot);

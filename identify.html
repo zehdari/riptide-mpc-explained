@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>System identification · How Talos flies</title>
+<meta name="description" content="How riptide_mpc's pool_identify fits Talos's buoyancy, centre of buoyancy, drag, added mass and thruster gains in the pool: the session it flies, the math of each fit, the plausibility checks, and a real session's results.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main>
+  <header class="page-head">
+    <div class="kicker">Chapter 8</div>
+    <h1>System identification</h1>
+    <p class="lede">The numbers you can't measure on land, fitted in the pool. <code>pool_identify</code> flies a scripted session with the MPC in control, records what Talos does, and fits buoyancy, drag, added mass and thruster gains, each with a check that it believes the answer.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="premise">The premise</h2>
+      <p>Identification works because one part of the model is trusted outright: the thrust. The thruster geometry (the matrix <span class="m">\mathbf T</span> of Chapter 2), the force curve (Blue Robotics' published T200 data), the delay, lag and limits, and the mass, COM and rotational inertia are all taken as known. So for every recorded sample, the wrench the thrusters applied is known from the commands. Whatever Talos does beyond what that wrench explains is attributed to the hydrodynamic terms, one group at a time:</p>
+      <div class="M">\begin{aligned} \text{statics:}\quad & \bar\tau_{\text{hold}} = \begin{bmatrix} -(B - W)\,\hat u \\ \hat u \times (B\, r_b) \end{bmatrix} \\ \text{drag:}\quad & \tau - \tau_{\text{hold}}(\hat u) = D_1 v + D_2 |v| v \\ \text{inertia:}\quad & \textstyle\int (\tau - \tau_{\text{hold}} - D(v))\,dt = M\,\Delta v \end{aligned}</div>
+      <p class="eq-note">û is world "up" in body axes; B the buoyant force, W = mg, r<sub>b</sub> the COB relative to the COM; one equation per axis for drag and inertia.</p>
+      <p>The order matters. Statics are fitted first, so the drag fit can subtract what holding still at the current tilt needs; drag is fitted next, so the inertia fit can subtract the drag. Everything is relative to the mass and COM you supplied (Chapter 3): the fitted model file carries that body with it.</p>
+
+      <h2 id="session">The session it flies</h2>
+      <p>The whole session is a list of POSITION setpoints flown by the normal MPC, so Talos is under closed-loop control throughout, except during releases. Each step has its own motion limits, pushed to the MPC as parameters before it starts. A hold settles (until the controller's settle trust exceeds 0.95, or 12 s) and then records for 10 s; a run records from the moment it is commanded until Talos has settled at the far end, so each run contains an acceleration, a cruise and a stop. Blocks, in order:</p>
+      <ol>
+        <li><strong>Statics:</strong> six holds: level, pitched ±25°, rolled ±25°, level again.</li>
+        <li><strong>Thruster ramps:</strong> each thruster in turn is commanded 0 → +8 N → 0 → −8 N → 0 over 30 s while the MPC holds Talos still with the other seven.</li>
+        <li><strong>Null-space patterns:</strong> the two zero-wrench thrust patterns of Chapter 2, each at ±4 N, superposed on the MPC's own command while it holds.</li>
+        <li><strong>Surge, sway and heave lanes:</strong> out and back at several speeds (0.2 to 0.7 m/s horizontally over 3 m lanes, 0.1 to 0.3 m/s vertically over 2.5 m).</li>
+        <li><strong>Yaw sweeps:</strong> ±90° about the start heading at 0.3, 0.6 and 0.9 rad/s.</li>
+        <li><strong>Releases:</strong> from a hold 2.5 m below the start, level and tilted ±45° in pitch and roll, all thrusters go to zero for 30 s and Talos floats up and rights itself on its own.</li>
+      </ol>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div id="tl-v"></div><div id="tl-w"></div></div>
+      <figcaption><b>A real session</b>, 2026-10-26, untethered (<code>talos_20261026_204748</code>): body velocity and yaw rate from the DVL and gyro, over the recorded segments only (setup holds between blocks are not recorded). Shaded bands are the blocks.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>Two MPC features make the ramps, patterns and releases possible. The controller accepts <em>identification inputs</em> on a topic: a fixed command for chosen thrusters (the optimizer pins their bounds to that value and holds the vehicle with the rest) and a bias that it projects onto the thruster matrix's null space, so it adds thrust without adding any wrench. Both are capped (±12 N fixed, 8 N bias), expire after 0.5 s and switch themselves off after 10 s of silence, so a crashed session leaves a normal controller behind. During a release, the estimator also stops learning its disturbance wrench, because a free float is not a model error.</p>
+      <p>The session is fenced in. It aborts and holds the start if Talos drifts 4.5 m from the start, rises above 0.4 m depth, or goes 1 m deeper than the deepest lane. A tilt guard trips if attitude error exceeds 0.45 rad or roll/pitch rates exceed 0.8 rad/s RMS for a second (except during and right after releases). A release is cut short above 0.75 m depth or past 60° of tilt.</p>
+
+      <h2 id="recording">What gets recorded</h2>
+      <p>The DVL sets the sample clock, about 8 Hz. For each DVL message the recorder stores the body velocity of base_link (the DVL reading moved through its lever arm with the gyro rate), the body rates (gyro, with the fibre-optic gyro owning yaw), the "up" direction from the IMU, and the <em>thrust impulse</em> since the previous sample:</p>
+      <div class="M">j_k = \int_{t_{k-1}}^{t_k} \mathbf T\, f(t)\, dt</div>
+      <p>where <span class="m">f(t)</span> is the realized thrust, computed by running every published command through a replica of the thruster dynamics (delay, lag, slew, limits) in 2 ms steps. Working in impulses rather than instantaneous forces averages away the thrust's fast changes between DVL samples. The per-thruster positive and negative impulses are kept too, for the gain fit. A session's <code>recording.csv</code> and <code>segments.csv</code> are everything the fits need, so any session can be re-fitted offline later.</p>
+
+      <h2 id="statics">Statics: buoyancy and centre of buoyancy</h2>
+      <p>During a still hold (body speed under 5 cm/s and rates under 0.05 rad/s, after the first 30% of the hold), Talos isn't accelerating, so the average thrust wrench balances the restoring wrench exactly. Averaging over each hold <span class="m">k</span> gives a wrench <span class="m">(\bar f_k, \bar\tau_k)</span> and an attitude <span class="m">\hat u_k</span>, and two linear problems:</p>
+      <div class="M">B = \frac1K \sum_k \big(W - \hat u_k \cdot \bar f_k\big), \qquad \begin{bmatrix} [\hat u_1]_\times \\ \vdots \\ [\hat u_K]_\times \end{bmatrix} p = \begin{bmatrix} \bar\tau_1 \\ \vdots \\ \bar\tau_K \end{bmatrix}, \quad r_b = p / B</div>
+      <p>The second is solved by least squares (SVD). Its structure explains why the session tilts the vehicle: <span class="m">[\hat u]_\times p</span> is blind to the component of <span class="m">p</span> along <span class="m">\hat u</span>. Level holds alone can't see the COB's height, because a vertical offset between COB and COM makes no torque when level. Pitched holds reveal x and z, rolled holds y and z. The code checks the smallest singular value against the largest (at least 5%; at 25° of tilt the ratio is 0.36) and keeps the prior's COB height if the tilts were missing.</p>
+      <p>A hold that wobbles too much to be still for a second is averaged over its whole length instead: the wobble's inertial torque nearly averages out. The fit is accepted if the volume is within 25% of the prior and the COB within 15 cm of the COM.</p>
+    </div>
+    <figure class="fig narrow">
+      <div class="panel" id="statics-table"></div>
+      <figcaption><b>Statics from the six holds</b> of the session above. The prior was the previous (tethered) session's fit; its COB was pulled 8 mm forward and 9 mm up by the tether.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>There is an independent check in the same data. During every release, from level and from ±45°, Talos floated to the same body attitude: "up" at (0.327, −0.070, 0.943), 19° from level. A free-floating body comes to rest with its COB straight above its COM, and the fitted COB direction is (0.325, −0.083, 0.944). The holds and the free float agree.</p>
+
+      <h2 id="drag">Drag</h2>
+      <p>For each run, the excess thrust is the recorded thrust minus what holding still at that tilt needs. During cruise it is all drag. The cruise is picked robustly: the samples above 90% of the run's 90th-percentile speed (so one DVL spike can't set the threshold), without the first and last, and within 7% of their median speed. Pooling out and back runs at several speeds gives points of drag against signed speed, and a two-term least-squares fit:</p>
+      <div class="M">\tau_{\text{excess}} = D_1\, v + D_2\, |v|\, v, \qquad D_1, D_2 \ge 0</div>
+      <p>It needs at least two distinct speed levels and is accepted if <span class="m">R^2 \ge 0.8</span> and the drag at the fastest level is within 0.2 to 5 times the prior's.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div class="cols" id="drag-charts"></div></div>
+      <figcaption><b>Cruise samples and the fitted drag</b> for surge and sway, re-derived from the session's recording with the same selection rules (dots), with the session's fit (solid) and the prior (dashed). The 0.5 and 0.7 m/s surge runs both topped out near 0.55 m/s: the 73 N thrust budget against drag.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="inertia">Added mass, and telling mass from lag</h2>
+      <p>Each run also gives an acceleration window (from 5% to 90% of its top speed) and a braking window (90% back down to 5%). Integrating the equation of motion over a window avoids differentiating noisy velocity:</p>
+      <div class="M">M\,(v_j - v_i) = \underbrace{C(t_j) - C(t_i)}_{\text{excess impulse}} - \sum_{k=i+1}^{j} \big(D_1 \bar v_k + D_2 |\bar v_k| \bar v_k\big)\, \Delta t_k</div>
+      <p>where <span class="m">C</span> is the cumulative excess impulse. One straight line through the origin, over all windows, gives the total mass <span class="m">M</span>; added mass is <span class="m">M</span> minus the rigid mass.</p>
+      <p>The catch: thrust that arrives later than the model thinks (a slow ESC, a stale sensor) also looks like extra mass, because the vehicle responds late either way. So the fit is repeated with the thrust delayed by 0, 0.05, … 0.6 s. If some extra delay explains the data better than zero delay by more than 0.25 s, the "mass" is really lag and the fit is rejected. Otherwise the zero-delay mass stands, and it must also lie within −0.25 to 5 times the rigid mass (3 times for rotations) with <span class="m">R^2 \ge 0.8</span>.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div class="cols" id="lag-charts"></div></div>
+      <figcaption><b>The lag check</b> for surge and sway, re-derived from the session (within 1% of its report). Delaying the thrust lowers the apparent mass: with 0.6 s of delay surge would look like 69 kg, close to the 66 kg the model used for weeks. But every delay fits worse than none. The data say Talos really is 158 kg in surge, with no hidden lag.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="gains">Thruster gains</h2>
+      <p>The ramps and null-space patterns exercise each thruster while Talos stays put. Every 1 s stretch of stillness gives six equations: the per-thruster impulses, each scaled by an unknown forward or reverse gain <span class="m">k_i^\pm</span>, plus buoyancy, must balance weight and the restoring torque. With 8 thrusters that is 20 unknowns (16 gains, B and the three components of <span class="m">B r_b</span>), solved together.</p>
+      <p>Holding still only excites the thruster matrix's null space, so the overall strength of a group of thrusters that act on the same axes trades exactly against the statics: a uniformly 10% weaker surge group looks the same as a slightly different COB. Each group's mean forward gain is therefore pinned to 1 (the force curve's scale), and only the differences within a group, and forward against reverse, are fitted. On Talos the groups are the four forward thrusters and the four angled ones. A group's reverse mean is pinned too unless its thrusters spent at least 20 s at mixed signs, which is what separates forward from reverse. A gain needs 5 s of exercise and must lie within 0.5 to 1.5 forward (0.4 to 1.5 reverse) to be accepted, and the accepted gains then correct the thrust for every other fit.</p>
+    </div>
+    <figure class="fig">
+      <div class="panel"><div class="cols" id="gain-charts"></div></div>
+      <figcaption><b>Fitted gains</b>, relative to the force curve: forward (each group's mean pinned at 1) and reverse (the surge group's fitted, the angled group's pinned). The joint fit's buoyancy and COB agree with the holds' to 0.3 N and 0.2 mm.</figcaption>
+    </figure>
+    <div class="prose">
+      <h2 id="releases">Releases</h2>
+      <p>Heave, roll and pitch are hard to identify from runs: vertical lanes are short, and Talos never rolls or pitches on purpose. A release gives a natural response instead: thrust off, the vehicle rises slowly and swings back to its free-float attitude like a damped pendulum. The axes couple too much for a one-axis regression, so this fit is an output-error fit by simulation. The Fossen model is simulated from each release's first sample with the recorded thrust tail, and Levenberg–Marquardt adjusts heave added mass and damping, roll and pitch added inertia, linear and quadratic damping, until the simulated velocity, rates and tilt match the recorded ones. Parameters that the data don't determine to 10% of their scale go back to the prior.</p>
+      <p>In the session above, all five releases ran the full 30 s, but the fit was rejected (<span class="m">R^2 &lt; 0.8</span>): with only 1.7 N of net buoyancy Talos rose at 4 cm/s, too gently to show much. The runs' heave fit wasn't accepted either, so heave, roll and pitch kept their prior values. That's the reason Chapter 1 flags the heave drag curve as the weakest number in the model.</p>
+
+      <h2 id="results">What a session produces</h2>
+    </div>
+    <figure class="fig">
+      <div class="panel" id="results-table"></div>
+      <figcaption><b>Every hydrodynamic fit</b> of the 2026-10-26 session. Rejected fits keep the prior's value in the identified model; the note says why.</figcaption>
+    </figure>
+    <div class="prose">
+      <p>The session writes <code>report.yaml</code> (every fit, prior, quality number and note), <code>model_identified.yaml</code> (the prior with each accepted value replaced) and the raw recording. It doesn't load the result into the MPC: a human looks at the report first. Sessions can iterate (fly, fit, load the fit, fly again) until two fits agree to 10% in volume, drag and inertia, 2 mm in COB and 0.03 in gains.</p>
+      <p>Any saved session can be re-fitted offline, for example after a fix to the fitting code:</p>
+      <pre><code>ros2 run riptide_mpc identify_fit --dir &lt;session dir&gt; --model &lt;the model the session flew with&gt;</code></pre>
+      <p>That is how the surge added mass on this site was obtained: the five saved sessions were re-fitted after the added-mass limit became per-axis, and every one now accepts surge at 115–158 kg total with no extra lag.</p>
+
+      <h2 id="checks">The checks, in one place</h2>
+      <table class="params">
+        <thead><tr><th>Fit</th><th>Accepted when</th></tr></thead>
+        <tbody>
+          <tr><td>Statics</td><td>volume within 25% of the prior; COB within 15 cm of the COM; COB height only from tilted holds</td></tr>
+          <tr><td>Drag</td><td>≥ 2 speed levels, ≥ 6 cruise samples, R² ≥ 0.8, 0.2–5× the prior at the top speed</td></tr>
+          <tr><td>Added mass</td><td>≥ 2 windows, R² ≥ 0.8, −0.25 to 5× rigid (3× rotations), best extra lag ≤ 0.25 s</td></tr>
+          <tr><td>Thruster gains</td><td>≥ 10 still chunks, ≥ 5 s exercised, 0.5–1.5 forward, 0.4–1.5 reverse</td></tr>
+          <tr><td>Releases</td><td>R² ≥ 0.8 and better than the prior; each parameter determined to 10%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/identify.js"></script>
+</body>
+</html>

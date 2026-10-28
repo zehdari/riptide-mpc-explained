@@ -10,7 +10,7 @@
 <body>
 <main>
   <header class="page-head">
-    <div class="kicker">Chapter 8</div>
+    <div class="kicker">Chapter 9</div>
     <h1>Build your own</h1>
     <p class="lede">Everything in the previous chapters, as a recipe for your own vehicle: the order to build it in, a whole control tick in forty lines, and how to identify the model in a pool.</p>
   </header>
@@ -22,7 +22,7 @@
         <li><strong>Write the model once, and share it.</strong> Implement the Fossen equation (Chapter 1) as a plain function of state and thrust, with an RK4 step. Use the same code in your simulator and your controller, and test that they agree. Every later bug is easier to find when the controller's model is known to be the plant in sim.</li>
         <li><strong>Get thrust right first.</strong> Get a force-against-RPM curve for each direction: the manufacturer's data if it's good (Talos uses Blue Robotics' published T200 curves), or a load-cell test of your own. Take positions and axes from CAD, build the thruster matrix, and model the delay and lag (Chapter 2). Trust these numbers: identification will attribute everything else to the hydrodynamics.</li>
         <li><strong>Weigh it wet.</strong> Mass and COM from a scale, in water if you can. Inertia from CAD is fine.</li>
-        <li><strong>Identify the rest in the pool</strong> (below): buoyancy and COB, drag, added mass. Start conservative; a model that is a little wrong is what the disturbance estimate is for.</li>
+        <li><strong>Identify the rest in the pool</strong> (Chapter 8): buoyancy and COB, drag, added mass. Start conservative; a model that is a little wrong is what the disturbance estimate is for.</li>
         <li><strong>Make a reference generator</strong> before tuning anything: a jerk-limited profile with limits well inside what the thrusters can do (Chapter 4). Add a path planner when autonomy needs to string moves together.</li>
         <li><strong>Write down the optimal control problem</strong> (Chapter 5): errors on the manifold, diagonal weights with heavy roll and pitch, effort and smoothness about an inverse-dynamics feedforward, box bounds on thrust.</li>
         <li><strong>Solve it the simple way</strong> (Chapter 6): single shooting, finite-difference Jacobians on the manifold, condense, projected Newton, one iteration per tick, warm-started by shifting. Measure the solve time on the real computer before you go further.</li>
@@ -72,14 +72,7 @@
       <p>Everything else in riptide_mpc is refinement of these lines: the governor around step 2, mode-dependent weights in <code>Q</code>, thrusters pinned for identification, numerics. The JavaScript port that runs this site is about 1,800 lines including the model, the profile, the path planner and the solver; it is a good second reference next to the C++.</p>
 
       <h2 id="identification">Identifying the model in a pool</h2>
-      <p><code>pool_identify</code> (<code>identification.cpp</code>, <code>pool_identify_node.cpp</code>) flies a scripted session with the MPC in position mode, so the vehicle is always under control, and fits the terms that cannot be measured on land. Because thrust is trusted, the realized thrust wrench is known from the commands; whatever the vehicle does beyond that is attributed to the hydrodynamics.</p>
-      <ul>
-        <li><strong>Statics</strong> from holds at several attitudes (level and tilted 25°). At a still hold, thrust balances the restoring wrench: <span class="m">\tau_{\text{hold}} = -(B - W)\,\hat z</span> in force and <span class="m">\hat z \times (B\, r_{\text{cob}})</span> in torque, linear in net buoyancy and in <span class="m">B r_{\text{cob}}</span>. Tilting makes the vertical COB offset observable.</li>
-        <li><strong>Drag</strong> from steady runs along each axis at several speeds (0.2 to 0.7 m/s, 0.3 to 0.9 rad/s in yaw): <span class="m">\tau - \tau_{\text{hold}} = D_l v + D_q |v| v</span>, a linear least-squares fit per axis.</li>
-        <li><strong>Added mass</strong> from the acceleration and braking phases of the same runs: <span class="m">\int (\tau + g - D v)\,dt = \mathbf M\, \Delta v</span> over each window, which avoids differentiating noisy velocity.</li>
-        <li><strong>Optional blocks:</strong> each thruster ramped while the other seven hold the vehicle, and null-space patterns while holding, to fit per-thruster gains; and releases, all thrusters off from level and tilted holds, so the vehicle floats up and rights itself with no thruster in the loop, for heave and roll/pitch inertia and damping.</li>
-      </ul>
-      <p>Fits are checked before they are accepted: added mass above 5× the rigid mass (3× for rotations) is rejected, and the inertia fit is repeated with the thrust delayed by up to 0.6 s; if a delay over 0.25 s explains the data better, the "inertia" is really actuation lag and is rejected. Sessions can iterate: fly, fit, load the fit into the MPC, fly again, until two fits agree.</p>
+      <p>Step 4 has its own chapter: <a href="identify.html">Chapter 8</a> walks through the <code>pool_identify</code> session, every fit and its checks, with the numbers from a real session.</p>
 
       <h2 id="nereus">Results in simulation</h2>
       <p>Before a pool test, the same C++ controller flies Talos in Nereus, the team's simulator, with the controller's model set to the simulator's (<code>active_control_model:=mpc mpc_model:=sim</code>). These runs were recorded for this site on 2026-10-27.</p>
