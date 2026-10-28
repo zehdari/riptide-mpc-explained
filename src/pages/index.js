@@ -15,6 +15,11 @@ const scene = createScene(canvas, {
   },
 });
 const worker = new Worker(new URL('../worker/sim.worker.js', import.meta.url), { type: 'module' });
+const send = worker.postMessage.bind(worker);
+worker.postMessage = (msg) => {
+  if (msg.type === 'goal' || msg.type === 'init') scene.setPlanned([]); // a point goal ends any path: drop its line
+  send(msg);
+};
 let last = null, trail = [], rtfSamples = [], lastWall = performance.now(), lastSim = 0;
 const bars = document.getElementById('hud-bars');
 document.getElementById('hud-names').innerHTML = thrusterNames.map((n) => `<span>${n}</span>`).join('');

@@ -1,8 +1,9 @@
-"""Decimate the Nereus Talos meshes into one web GLB, part by part (ROS FLU frame kept).
+"""Decimate the Nereus Talos meshes into one web GLB (ROS FLU frame kept).
 
-Each CAD part is welded and simplified on its own with a share of the face budget
-(at least `floor` faces), so small parts keep their shape instead of collapsing.
-Parts are then merged per colour. Normals are left to the viewer (creased there).
+Every CAD part is split into its connected pieces. Small pieces (and every piece of a
+transparent part, like the acrylic end caps) are kept as they are: simplifying their
+few large flat triangles cracks them. Larger pieces are welded and simplified toward
+the face budget. Pieces are merged back per material (colour + alpha).
 usage: decimate_talos.py <merged.glb> <out.glb> <face budget>
 """
 import sys
@@ -11,39 +12,42 @@ import trimesh
 import fast_simplification
 
 src, out, budget = sys.argv[1], sys.argv[2], int(sys.argv[3])
-floor = 120
+KEEP = 600  # pieces at or below this many faces are kept whole
 scene = trimesh.load(src, force='scene')
-parts = []
+pieces = []  # (mesh, rgba, simplify?)
 for name, geom in scene.geometry.items():
     for node in scene.graph.geometry_nodes.get(name, []):
         T, _ = scene.graph.get(node)
         g = geom.copy()
         g.apply_transform(T)
-        try:
-            c = getattr(g.visual.material, 'baseColorFactor', None)
-            if c is None:
-                c = getattr(g.visual.material, 'main_color', None)
-            color = tuple(int(x) for x in np.asarray(c).ravel()[:3]) if c is not None else (150, 150, 150)
-        except Exception:
-            color = (150, 150, 150)
+        mat = g.visual.material
+        c = getattr(mat, 'baseColorFactor', None)
+        rgba = [int(x) for x in np.asarray(c).ravel()[:4]] if c is not None else [150, 150, 150, 255]
+        clear = getattr(mat, 'alphaMode', None) == 'BLEND' or rgba[3] < 250
         m = trimesh.Trimesh(g.vertices, g.faces, process=False)
         m.merge_vertices(merge_tex=True, merge_norm=True, digits_vertex=5)
-        parts.append((m, color))
-total = sum(len(m.faces) for m, _ in parts)
+        for p in m.split(only_watertight=False):
+            pieces.append((p, tuple(rgba), not clear and len(p.faces) > KEEP))
+fixed = sum(len(p.faces) for p, _, s in pieces if not s)
+big = sum(len(p.faces) for p, _, s in pieces if s)
+ratio = max(0.05, min(1.0, (budget - fixed) / max(big, 1)))
 groups = {}
-for m, color in parts:
-    keep = max(floor, int(budget * len(m.faces) / total))
-    if len(m.faces) > keep * 1.05:
-        v, f = fast_simplification.simplify(m.vertices.astype(np.float32), m.faces.astype(np.int32), target_reduction=1 - keep / len(m.faces), agg=5)
-        m = trimesh.Trimesh(v, f, process=False)
-    groups.setdefault(color, []).append(m)
+for p, rgba, simplify in pieces:
+    if simplify:
+        keep = max(KEEP, int(len(p.faces) * ratio))
+        if len(p.faces) > keep * 1.05:
+            v, f = fast_simplification.simplify(p.vertices.astype(np.float32), p.faces.astype(np.int32), target_reduction=1 - keep / len(p.faces), agg=5)
+            p = trimesh.Trimesh(v, f, process=False)
+    groups.setdefault(rgba, []).append(p)
 out_scene = trimesh.Scene()
-kept = 0
-for color, ms in groups.items():
+total = 0
+for rgba, ms in groups.items():
     m = trimesh.util.concatenate(ms)
     m.remove_unreferenced_vertices()
-    kept += len(m.faces)
-    m.visual = trimesh.visual.TextureVisuals(material=trimesh.visual.material.PBRMaterial(baseColorFactor=list(color) + [255], metallicFactor=0.2, roughnessFactor=0.55))
+    total += len(m.faces)
+    mat = trimesh.visual.material.PBRMaterial(baseColorFactor=list(rgba), metallicFactor=0.2, roughnessFactor=0.55,
+                                              alphaMode='BLEND' if rgba[3] < 250 else 'OPAQUE', doubleSided=rgba[3] < 250)
+    m.visual = trimesh.visual.TextureVisuals(material=mat)
     out_scene.add_geometry(m, geom_name=f'part_{len(out_scene.geometry)}')
-print('parts', len(parts), 'faces in', total, 'out', kept)
+print('pieces', len(pieces), 'kept whole', fixed, 'simplified', big, 'ratio', round(ratio, 3), 'out faces', total)
 out_scene.export(out)

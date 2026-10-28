@@ -92,7 +92,7 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
           const m = o.material;
           // CAD meshes need hard edges kept: split normals wherever faces meet at more than 35 degrees.
           o.geometry = toCreasedNormals(o.geometry, (35 * Math.PI) / 180);
-          o.material = new THREE.MeshStandardMaterial({ color: m.color, metalness: 0.3, roughness: 0.5, envMap, envMapIntensity: 0.45, transparent: m.transparent, opacity: m.opacity });
+          o.material = new THREE.MeshStandardMaterial({ color: m.color, metalness: 0.3, roughness: 0.5, envMap, envMapIntensity: 0.45, transparent: m.transparent, opacity: m.opacity, side: m.side });
         }
       });
       body.add(g.scene);
