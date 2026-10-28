@@ -4,6 +4,9 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
+import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { vehicle } from '../engine/talos.js';
 import { rpyQuat, qrot } from '../engine/math.js';
 
@@ -100,26 +103,30 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
     return a;
   });
 
-  function line(color, { dashed = false, width = 1, opacity = 1 } = {}) {
-    const geo = new THREE.BufferGeometry();
-    const mat = dashed
-      ? new THREE.LineDashedMaterial({ color, dashSize: 0.08, gapSize: 0.06, transparent: true, opacity })
-      : new THREE.LineBasicMaterial({ color, transparent: true, opacity });
-    const l = new THREE.Line(geo, mat);
-    l.frustumCulled = false;
-    root.add(l);
+  // Screen-space lines of constant pixel width (WebGL's own lines are 1 px and vanish edge-on or in fog).
+  const lineMats = [];
+  function line(color, { dashed = false, width = 3, opacity = 1 } = {}) {
+    const mat = new LineMaterial({ color, linewidth: width, dashed, dashSize: 0.08, gapSize: 0.06, transparent: opacity < 1, opacity, fog: false, worldUnits: false });
+    lineMats.push(mat);
+    let l = null, visible = true;
     return {
       set(points) {
-        l.geometry.dispose();
-        l.geometry = new THREE.BufferGeometry().setFromPoints(points.map(v3));
+        if (l) { root.remove(l); l.geometry.dispose(); l = null; }
+        if (points.length < 2) return;
+        const geo = new LineGeometry();
+        geo.setPositions(points.flatMap((p) => [p[0], p[1], p[2]]));
+        l = new Line2(geo, mat);
+        l.frustumCulled = false;
         if (dashed) l.computeLineDistances();
+        l.visible = visible;
+        root.add(l);
       },
-      obj: l,
+      show(on) { visible = on; if (l) l.visible = on; },
     };
   }
-  const prediction = line(0x13996a, { width: 2 });
-  const planned = line(0xeb6834, { dashed: true });
-  const trail = line(0x2a78d6, { opacity: 0.7 });
+  const prediction = line(0x13996a, { width: 3.5 });
+  const planned = line(0xeb6834, { dashed: true, width: 2.5 });
+  const trail = line(0x2a78d6, { width: 3 });
   // Dots along the horizon, every 5 stages.
   const dotGeo = new THREE.SphereGeometry(0.025, 12, 8);
   const predDots = Array.from({ length: 31 }, () => {
@@ -141,7 +148,7 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
   goal.position.z = floorDepth + 0.004;
   goal.visible = false;
   root.add(goal);
-  const goalStem = line(0xd9480f, { dashed: true, opacity: 0.6 });
+  const goalStem = line(0xd9480f, { dashed: true, width: 1.5, opacity: 0.6 });
 
   // Picking on the floor plane.
   const ray = new THREE.Raycaster();
@@ -170,6 +177,7 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
       if (w < 700) camera.position.sub(controls.target).multiplyScalar(1.9).add(controls.target);
     }
     renderer.setSize(w, h, false);
+    lineMats.forEach((m) => m.resolution.set(w, h));
     camera.aspect = w / h;
     if (shiftRight && w > 900) camera.setViewOffset(w, h, -w * shiftRight, 0, w, h);
     else camera.clearViewOffset();
@@ -229,6 +237,6 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
       goalStem.set([[p[0], p[1], floorDepth], p]);
     },
     follow(p) { follow = p; },
-    showPrediction(on) { prediction.obj.visible = on; predDots.forEach((d) => (d.visible = d.visible && on)); },
+    showPrediction(on) { prediction.show(on); predDots.forEach((d) => (d.visible = d.visible && on)); },
   };
 }
