@@ -52,18 +52,54 @@ setup();
   const grid = document.getElementById('h-grid');
   const left = document.createElement('div'), right = document.createElement('div');
   grid.append(left, right);
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = 480;
-  canvas.style.cssText = 'width:100%;max-width:480px;aspect-ratio:1;display:block;image-rendering:pixelated;border-radius:4px';
-  left.appendChild(canvas);
-  const row = new LineChart(right, { height: 300, xLabel: 'command index (stage × 8 + thruster)', yLabel: 'H[VUS₀, ·]', digits: 4, xDigits: 0, legend: false });
   const info = document.getElementById('h-info');
+  const names = ['VUS', 'VUP', 'HUS', 'HUP', 'HLS', 'HLP', 'VLS', 'VLP'];
+    // Continuous blue ramp on a square-root scale; the smallest coupling is still visibly blue, never background.
+  const seqColor = (u) => {
+    const t = Math.sqrt(Math.max(0, Math.min(1, u)));
+    const lo = [205, 226, 251], hi = [13, 54, 107];
+    return `rgb(${lo.map((l, i) => Math.round(l + (hi[i] - l) * t)).join(',')})`;
+  };
+  // diverging: blue (negative) - neutral - orange (positive)
+  const div = (u) => {
+    const t = Math.min(1, Math.abs(u));
+    const end = u < 0 ? [42, 120, 214] : [235, 104, 52], mid = [231, 239, 240];
+    const c = mid.map((m, i) => Math.round(m + (end[i] - m) * t));
+    return `rgb(${c.join(',')})`;
+  };
   let sim = null, k = 0;
-  const ramp = ['#e8f1fc', '#cde2fb', '#9ec5f4', '#6da7ec', '#3987e5', '#256abf', '#184f95', '#0d366b'];
-  const run = () => {
-    if (!sim) {
-      sim = new Simulation({ settings: { model_step: 0.01 } });
+  const drawStages = (H, n) => {
+    const N = n / 8, S = 440, pad = 52, cs = (S - pad) / N;
+    const B = Array.from({ length: N }, (_, j) => Array.from({ length: N }, (_, kk) => {
+      let v = 0;
+      for (let a = 0; a < 8; a++) for (let c = 0; c < 8; c++) v += H[(8 * j + a) * n + 8 * kk + c] ** 2;
+      return Math.sqrt(v);
+    }));
+    const mx = Math.max(...B.flat());
+    let cells = '';
+    B.forEach((row, j) => row.forEach((v, kk) => {
+      cells += `<rect x="${pad + kk * cs}" y="${pad + j * cs}" width="${cs + 0.3}" height="${cs + 0.3}" fill="${seqColor(v / mx)}"><title>stages ${j} and ${kk}: ${(v / mx).toFixed(2)}</title></rect>`;
+    }));
+    let ticks = '';
+    for (let t = 0; t < N; t += 5) {
+      ticks += `<text class="label" x="${pad + (t + 0.5) * cs}" y="${pad - 8}" text-anchor="middle">${t}</text><text class="label" x="${pad - 8}" y="${pad + (t + 0.5) * cs + 4}" text-anchor="end">${t}</text>`;
     }
+    left.innerHTML = `<div style="font-family:var(--sans);font-size:.86rem;color:var(--ink-2);margin-bottom:.3rem">Coupling between stages (each cell: one 8 × 8 block of H)</div><svg class="chart" viewBox="0 0 ${S} ${S}">${cells}${ticks}<text class="label" x="${pad}" y="14">stage of one command →</text><text class="label" transform="translate(14 ${pad}) rotate(90)">stage of the other →</text></svg>`;
+  };
+  const drawBlock = (H, n) => {
+    const S = 420, pad = 44, cs = (S - pad) / 8;
+    const blk = names.map((_, a) => names.map((_, b) => H[a * n + b]));
+    const mx = Math.max(...blk.flat().map(Math.abs));
+    let cells = '';
+    blk.forEach((row, a) => row.forEach((v, b) => {
+      const u = v / mx;
+      cells += `<rect x="${pad + b * cs}" y="${pad + a * cs}" width="${cs - 2}" height="${cs - 2}" rx="2" fill="${div(u)}"/><text x="${pad + b * cs + cs / 2 - 1}" y="${pad + a * cs + cs / 2 + 3}" text-anchor="middle" style="font-size:11.5px;fill:${Math.abs(u) > 0.6 ? '#fff' : 'var(--ink)'}">${u.toFixed(2)}</text>`;
+    }));
+    const labels = names.map((nm, i) => `<text class="label" x="${pad + i * cs + cs / 2}" y="${pad - 8}" text-anchor="middle">${nm}</text><text class="label" x="${pad - 6}" y="${pad + i * cs + cs / 2 + 4}" text-anchor="end">${nm}</text>`).join('');
+    right.innerHTML = `<div style="font-family:var(--sans);font-size:.86rem;color:var(--ink-2);margin-bottom:.3rem">Stage 0's block: how the eight first commands interact</div><svg class="chart" viewBox="0 0 ${S} ${S}">${cells}${labels}</svg><div class="legend" style="margin-top:.3rem"><span><i style="background:rgb(235,104,52);height:8px"></i>same effect (positive)</span><span><i style="background:rgb(42,120,214);height:8px"></i>opposite effects (negative)</span></div>`;
+  };
+  const run = () => {
+    if (!sim) sim = new Simulation({ settings: { model_step: 0.01 } });
     const goals = [[1.2, 0.6, -1.3], [0.2, -0.5, -0.8], [1.5, -0.3, -1.1]];
     const ref = sim.holdHere();
     ref.position = goals[k++ % goals.length];
@@ -71,29 +107,9 @@ setup();
     sim.controller.debug = true;
     const out = sim.tick(ref);
     sim.controller.debug = false;
-    const H = out.H, n = Math.round(Math.sqrt(H.length));
-    const ctx = canvas.getContext('2d');
-    const img = ctx.createImageData(n, n);
-    let max = 0;
-    for (let i = 0; i < H.length; i++) max = Math.max(max, Math.abs(H[i]));
-    for (let i = 0; i < n; i++)
-      for (let j = 0; j < n; j++) {
-        const v = Math.abs(H[i * n + j]) / max;
-        const l = v > 0 ? Math.max(0, Math.min(1, 1 + Math.log10(v) / 6)) : 0;
-        const c = ramp[Math.min(ramp.length - 1, Math.floor(l * ramp.length))];
-        const o = (i * n + j) * 4;
-        img.data[o] = parseInt(c.slice(1, 3), 16);
-        img.data[o + 1] = parseInt(c.slice(3, 5), 16);
-        img.data[o + 2] = parseInt(c.slice(5, 7), 16);
-        img.data[o + 3] = l > 0 ? 255 : 0;
-      }
-    const tmp = document.createElement('canvas');
-    tmp.width = tmp.height = n;
-    tmp.getContext('2d').putImageData(img, 0, 0);
-    ctx.imageSmoothingEnabled = false;
-    ctx.clearRect(0, 0, 480, 480);
-    ctx.drawImage(tmp, 0, 0, 480, 480);
-    row.set([{ name: 'H row', color: 'var(--state)', values: Array.from({ length: n }, (_, j) => ({ x: j, y: H[j] })) }], { yZero: true });
+    const n = Math.round(Math.sqrt(out.H.length));
+    drawStages(out.H, n);
+    drawBlock(out.H, n);
     info.textContent = `${n} × ${n}, solved in ${out.solve_ms.toFixed(0)} ms with ${out.qp_iterations} QP iteration${out.qp_iterations === 1 ? '' : 's'} (browser).`;
   };
   document.getElementById('h-run').addEventListener('click', run);

@@ -52,14 +52,14 @@
       <div class="M">\begin{aligned} H &= \textstyle\sum_{k} w_k M_k^\top Q M_k + r I + r_\Delta D^\top D \\ g &= \textstyle\sum_{k} w_k M_k^\top Q\, y_k + r (U - U^{\text{ff}}) + r_\Delta D^\top D\, (U - U^{\text{ff}}) \end{aligned}</div>
       <p>where <span class="m">D</span> takes differences between consecutive stages (the smoothness term, tridiagonal in blocks). The QP for the step is</p>
       <div class="M">\min_{\delta U}\ \tfrac12\, \delta U^\top H\, \delta U + g^\top \delta U \qquad \text{s.t.}\qquad -24 - U \le \delta U \le 24 - U</div>
-      <p>Below is the actual <span class="m">H</span> from one tick of the browser controller, while Talos moves. Every entry couples two commands; it is dense because, after condensing, every command influences every later stage.</p>
+      <p>Below is the actual <span class="m">H</span> from one tick of the browser controller while Talos moves, in two views. On the left, all 240 × 240 entries are grouped into the 30 × 30 pairs of stages they connect, so each cell says how strongly the thrust chosen at one stage interacts, in the cost, with the thrust chosen at another. On the right is the first stage's own 8 × 8 block, thruster by thruster.</p>
     </div>
     <figure class="fig">
       <div class="panel">
         <div class="controls"><button class="btn" id="h-run">Compute a new tick</button><span id="h-info"></span></div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));gap:1rem" id="h-grid"></div>
       </div>
-      <figcaption><b>The condensed Hessian, 240 × 240</b> (left; magnitude on a log scale, darker is larger) and one row of it (right), the coupling of thruster VUS at stage 0 to every other command. Blocks along the diagonal are stages; inside each 8 × 8 block, thrusters that move the same axes couple strongly. Couplings fade toward later stages, which affect fewer costs.</figcaption>
+      <figcaption><b>The condensed Hessian, two ways.</b> Left: no cell is empty, which is what condensing costs: every stage's thrust is coupled to every other's, so H is dense rather than banded. The coupling fades down the diagonal and along each row, because a late command only affects the few costs after it. Right: thrusters that move the same axis couple positively, and the strongest negative pairs are the diagonal forward pairs (VUS with VLP, VUP with VLS). Those two agree on surge but push pitch and yaw in opposite directions, and pitch and yaw carry the heaviest weights, so the optimizer treats raising one as partly undoing the other: the null-space pattern from Chapter 2, seen from the cost's side.</figcaption>
     </figure>
     <div class="prose">
       <p>Why condense instead of keeping the states as variables (a sparse QP with 30 × 20 more unknowns)? For a horizon of 30 and only eight inputs, the dense problem is small: a 240 × 240 Cholesky factorization is about 4.6 million multiply-adds, a fraction of a millisecond. Sparse solvers win when horizons are long or inputs many; here, dense and simple wins, and needs no external solver library.</p>
