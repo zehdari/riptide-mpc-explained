@@ -185,6 +185,7 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
     const hit = new THREE.Vector3();
     if (!ray.ray.intersectPlane(plane, hit)) return null;
     const p = root.worldToLocal(hit);
+    if (Math.abs(p.x) > 15 || Math.abs(p.y) > 15) return null; // near the horizon the ray lands far outside the pool
     return [p.x, p.y, p.z];
   }
 

@@ -82,6 +82,7 @@ onmessage = ({ data }) => {
       path: null,
     };
     goal = data.position;
+    plannedPoints = null;
     void r;
   } else if (data.type === 'path') {
     const pose = sim.controller.live.pose;
