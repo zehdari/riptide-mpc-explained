@@ -72,7 +72,7 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
   const surface = new THREE.Mesh(new THREE.PlaneGeometry(32, 32), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.08, side: THREE.DoubleSide }));
   root.add(surface);
 
-  // Talos: model frame is the CAD origin; the group sits at base_link.
+  // Talos: model frame is origin; the group sits at base_link.
   const talos = new THREE.Group();
   root.add(talos);
   const body = new THREE.Group();

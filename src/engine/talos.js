@@ -7,7 +7,7 @@
 // 123.8 kg added, 158.1 kg total, R^2 0.97, no extra thrust lag.
 
 export const vehicle = {
-  base_link: [-0.14, 0.03, -0.09], // vehicle config frame (CAD origin)
+  base_link: [-0.14, 0.03, -0.09], // vehicle config frame (origin)
   thrusters: [
     { name: 'VUS', pose: [-0.134, -0.369, 0.242, 0.0, 0.0, 0.0] },
     { name: 'VUP', pose: [-0.134, 0.438, 0.242, 0.0, 0.0, 0.0] },

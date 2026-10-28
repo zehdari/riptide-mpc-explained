@@ -24,7 +24,7 @@
     </div>
     <figure class="fig">
       <div class="panel" id="frame-graph"></div>
-      <figcaption><b>The frame tree</b>, as the URDF builds it. <code>base_link</code> is the root: what odometry reports and setpoints refer to. The CAD origin (the farthest-port screw on the front of the camera cage) is a fixed datum 169 mm away, and it's there because every pose in the vehicle YAML, base_link's own included, is measured from it. The model re-expresses all of them relative to the COM when it loads. Hover a frame for its offset.</figcaption>
+      <figcaption><b>The frame tree</b>, as the URDF builds it. <code>base_link</code> is the root: what odometry reports and setpoints refer to. The <code>origin</code> frame (the farthest-port screw on the front of the camera cage) is a fixed datum 169 mm away, and it's there because every pose in the vehicle YAML, base_link's own included, is measured from it. The model re-expresses all of them relative to the COM when it loads. Hover a frame for its offset.</figcaption>
     </figure>
     <div class="prose">
       <p>The state is 13 numbers, the simulator's own layout:</p>

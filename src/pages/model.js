@@ -18,8 +18,8 @@ const mm = (v) => v.map((x) => (x * 1000).toFixed(0)).join(', ');
   const rel = (p) => mm(p.map((x, i) => x - hydro.com[i]));
   const txt = {
     world: 'World (odometry) frame: x, y on the surface plane, z up. Depth is negative.',
-    base_link: `base_link: the root link of the URDF, what odometry reports and every setpoint uses. It sits near the middle of the vehicle, (${mm(vehicle.base_link)}) mm from the CAD origin and (${rel(vehicle.base_link)}) mm from the COM.`,
-    origin: 'CAD origin: the farthest-port screw on the front of the camera cage, and the SolidWorks origin. Not a point the controller uses itself: it is the datum every pose in the vehicle YAML (base_link, COM, thrusters, sensors) is measured from. In the URDF it is a fixed child of base_link.',
+    base_link: `base_link: the root link of the URDF, what odometry reports and every setpoint uses. It sits near the middle of the vehicle, (${mm(vehicle.base_link)}) mm from origin and (${rel(vehicle.base_link)}) mm from the COM.`,
+    origin: 'origin: the farthest-port screw on the front of the camera cage, and the SolidWorks origin. Not a point the controller uses itself: it is the datum every pose in the vehicle YAML (base_link, COM, thrusters, sensors) is measured from. In the URDF it is a fixed child of base_link.',
     com: `Centre of mass, measured wet: (${mm(hydro.com)}) mm from the origin. The physics is written here.`,
     cob: `Centre of buoyancy: (${mm(hydro.cob)}) mm from the COM. 22.5 mm above it, so Talos rights itself.`,
     thrusters: 'Eight thrusters. Each has a position and an axis; relative to the COM they form the 6×8 thruster matrix (Chapter 2).',
@@ -33,7 +33,7 @@ const mm = (v) => v.map((x) => (x * 1000).toFixed(0)).join(', ');
     nodes: [
       { id: 'world', x: 60, y: 150, label: 'world', sub: 'odometry frame' },
       { id: 'base_link', x: 255, y: 150, label: 'base_link', sub: 'URDF root, setpoints' },
-      { id: 'origin', x: 470, y: 150, label: 'CAD origin', sub: 'vehicle YAML datum' },
+      { id: 'origin', x: 470, y: 150, label: 'origin', sub: 'vehicle YAML datum' },
       { id: 'com', x: 690, y: 50, label: 'COM', sub: 'the model', bold: true },
       { id: 'cob', x: 850, y: 50, label: 'COB', sub: 'buoyancy' },
       { id: 'thrusters', x: 700, y: 150, label: '8 thrusters', sub: 'pose + axis' },
