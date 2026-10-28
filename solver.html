@@ -112,7 +112,7 @@ VectorXd U = warm_.cwiseMax(lb_).cwiseMin(ub_);</code></pre>
           <tr><td>Published prediction</td><td>Another 750 fine steps (for the viewer and logs)</td></tr>
         </tbody>
       </table>
-      <p>Each model step is four evaluations of the Fossen derivative, a few thousand floating-point operations; a tick is a few tens of millions. That is about 11 ms (median) in C++ with Eigen on a desktop CPU, and the browser port manages 20–50 ms in JavaScript. The node publishes every solve time on <code>controller/mpc/solve_time_ms</code> and warns if one takes longer than the 50 ms control period.</p>
+      <p>Each model step is four evaluations of the Fossen derivative, a few thousand floating-point operations: about 13,000 evaluations per tick, more than half of them for the Jacobians. All of that happens before the QP. Once <span class="m">H</span> and <span class="m">g</span> are built, the projected Newton iterations never touch the model again; they are pure linear algebra on the 240 × 240 problem, so a saturated tick that needs four QP iterations costs only a few more Cholesky solves. A tick is a few tens of millions of floating-point operations. That is about 11 ms (median) in C++ with Eigen on a desktop CPU, and the browser port manages 20–50 ms in JavaScript. The node publishes every solve time on <code>controller/mpc/solve_time_ms</code> and warns if one takes longer than the 50 ms control period.</p>
     </div>
     <nav class="next" aria-label="Chapter navigation"></nav>
   </article>
