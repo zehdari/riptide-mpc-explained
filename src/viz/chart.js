@@ -226,7 +226,8 @@ export function barChart(container, rows, { width = 640, rowH = 26, unit = '', d
       const last = g.value >= 0 ? k === r.segments.length - 1 || r.segments.slice(k + 1).every((s) => s.value <= 0) : true;
       const w = Math.max(0, b - a - (k > 0 ? 2 : 0));
       const rect = el('rect', { x: g.value >= 0 && k > 0 ? a + 2 : a, y: y + (rowH - h) / 2, width: w, height: h, rx: last ? 3 : 0, fill: g.color, style: 'cursor:pointer' }, svg);
-      const text = `${g.name || r.label}: <b>${g.value.toFixed(digits)}</b>${r.unit ?? (unit ? ' ' + unit : '')}`;
+      const v = g.shown ?? g.value; // shown: the real value when the bar is drawn scaled
+      const text = `${g.name || r.label}: <b>${v.toFixed(Math.abs(v) < 1 && v ? Math.max(digits, 2) : digits)}</b>${r.unit ?? (unit ? ' ' + unit : '')}`;
       const show = () => {
         const box = rect.getBoundingClientRect(), wb = wrap.getBoundingClientRect();
         tip.innerHTML = text;

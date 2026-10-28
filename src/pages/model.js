@@ -119,7 +119,7 @@ const mm = (v) => v.map((x) => (x * 1000).toFixed(0)).join(', ');
   host.appendChild(leg);
   const box = document.createElement('div');
   host.appendChild(box);
-  barChart(box, labels.map((l, i) => ({ label: l, segments: [{ value: rigid[i] * (i > 2 ? 20 : 1), color: 'var(--state)', name: 'rigid' }, { value: hydro.added_mass[i] * (i > 2 ? 20 : 1), color: 'var(--prediction)', name: 'added' }], total: rigid[i] + hydro.added_mass[i], unit: i > 2 ? ' kg·m²' : ' kg' })), { digits: 1, valueW: 92 });
+  barChart(box, labels.map((l, i) => ({ label: l, segments: [{ value: rigid[i] * (i > 2 ? 20 : 1), shown: rigid[i], color: 'var(--state)', name: 'rigid' }, { value: hydro.added_mass[i] * (i > 2 ? 20 : 1), shown: hydro.added_mass[i], color: 'var(--prediction)', name: 'added' }], total: rigid[i] + hydro.added_mass[i], unit: i > 2 ? ' kg·m²' : ' kg' })), { digits: 1, valueW: 92 });
 }
 
 // ---------- drag ----------
