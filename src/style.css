@@ -251,3 +251,5 @@ svg.graph .pulse { fill: var(--accent); }
 
 /* Big desktop screens: scale the whole page up a little rather than leave wide empty margins. */
 @media (min-width: 1700px) { html { font-size: 17.5px; } }
+
+.marker-label { paint-order: stroke; stroke: var(--paper-2); stroke-width: 3px; stroke-linejoin: round; }

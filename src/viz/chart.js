@@ -120,10 +120,18 @@ export class LineChart {
         t.textContent = s.endLabel;
       }
     }
-    if (this.o.markers) for (const mk of this.o.markers) {
-      el('line', { x1: sx(mk.x), x2: sx(mk.x), y1: m.t, y2: H - m.b, stroke: 'var(--muted)', 'stroke-dasharray': '2 3' }, svg);
-      const t = el('text', { class: 'label', x: sx(mk.x) + 4, y: m.t + 10 }, svg);
-      t.textContent = mk.label;
+    if (this.o.markers) {
+      // Labels that would run into the previous one drop to the next free row.
+      const rowEnds = [];
+      for (const mk of this.o.markers) el('line', { x1: sx(mk.x), x2: sx(mk.x), y1: m.t, y2: H - m.b, stroke: 'var(--muted)', 'stroke-dasharray': '2 3' }, svg);
+      for (const mk of this.o.markers) { // labels after all the lines, so no line crosses a label
+        const x = sx(mk.x) + 4;
+        let row = rowEnds.findIndex((end) => x > end + 6);
+        if (row < 0) row = rowEnds.length;
+        const t = el('text', { class: 'label marker-label', x, y: m.t + 10 + row * 13 }, svg);
+        t.textContent = mk.label;
+        rowEnds[row] = x + (t.getComputedTextLength?.() || mk.label.length * 6.5);
+      }
     }
     this.cross = el('line', { class: 'crosshair', y1: m.t, y2: H - m.b, visibility: 'hidden' }, svg);
     this.dots = this.series.map((s) => el('circle', { r: 4, fill: s.color, stroke: 'var(--paper-2)', 'stroke-width': 2, visibility: 'hidden' }, svg));
