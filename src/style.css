@@ -187,7 +187,7 @@ table.params tr.group td { font-weight: 600; color: var(--ink); padding-top: 1re
 
 /* ---------- graphs (nodes & edges) ---------- */
 svg.graph { display: block; width: 100%; height: auto; font-family: var(--sans); overflow: visible; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-svg.graph .node { cursor: pointer; touch-action: manipulation; }
+svg.graph .node { cursor: pointer; touch-action: manipulation; outline: none; } /* selection shows as the highlight, keyboard focus included */
 svg.graph .node rect, svg.graph .node circle { fill: var(--paper); stroke: var(--ink); stroke-width: 1.5; }
 svg.graph .node text { fill: var(--ink); font-size: 12.5px; text-anchor: middle; dominant-baseline: central; }
 svg.graph .node .sub { fill: var(--muted); font-size: 11.5px; }

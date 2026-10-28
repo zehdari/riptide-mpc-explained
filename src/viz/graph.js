@@ -31,6 +31,9 @@ export class Graph {
     // A touch "leaves" as soon as the finger lifts: only a mouse clears the highlight by leaving,
     // so a tapped node stays selected until another is tapped.
     this.svg.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') this.highlight(null); });
+    // Touch: tapping empty space in the graph, or anywhere outside it, deselects.
+    this.svg.addEventListener('pointerdown', (e) => { if (!e.target.closest('.node')) this.highlight(null); });
+    document.addEventListener('pointerdown', (e) => { if (this.selected && !this.svg.contains(e.target)) this.highlight(null); });
   }
   uid() {
     if (!this._uid) this._uid = '-' + Math.random().toString(36).slice(2, 8);
@@ -57,9 +60,9 @@ export class Graph {
       t.textContent = n.sub;
     }
     g.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') this.highlight(n.id); });
-    g.addEventListener('pointerdown', () => this.highlight(n.id));
-    g.addEventListener('focus', () => this.highlight(n.id));
-    g.addEventListener('click', () => this.highlight(n.id));
+    // A tap selects; tapping the selected node again deselects it.
+    g.addEventListener('pointerdown', (e) => this.highlight(e.pointerType !== 'mouse' && this.selected === n.id ? null : n.id));
+    g.addEventListener('focus', () => { if (this.selected !== n.id) this.highlight(n.id); });
     this.nodes.set(n.id, { ...n, g, w, h });
   }
   anchor(n, toward) {
@@ -99,6 +102,7 @@ export class Graph {
     return edge;
   }
   highlight(id) {
+    this.selected = id;
     const near = new Set([id]);
     if (id) this.edges.forEach((e) => { if (e.from === id) near.add(e.to); if (e.to === id) near.add(e.from); });
     this.nodes.forEach((n, k) => {
