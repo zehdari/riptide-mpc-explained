@@ -194,7 +194,7 @@ svg.graph .pulse { fill: var(--accent); }
 .hero .actions { display: flex; flex-wrap: wrap; gap: 0.45rem; max-width: min(44rem, 100%); }
 .hero .actions .btn { background: rgba(243, 247, 247, 0.92); backdrop-filter: blur(6px); white-space: nowrap; }
 .hero .actions .btn.primary { background: var(--ink); }
-.hero .actions .btn[aria-expanded='true'] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.hero .actions .btn[aria-pressed='true'], .hero .actions .btn[aria-expanded='true'] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .hero .attitude { flex-basis: 100%; display: grid; grid-template-columns: repeat(3, auto) 1fr; gap: 0.4rem 1rem; align-items: center; justify-items: start; background: rgba(243, 247, 247, 0.92); backdrop-filter: blur(6px); border-radius: 10px; padding: 0.55rem 0.8rem; font-family: var(--sans); font-size: 0.84rem; color: var(--ink-2); width: fit-content; max-width: 100%; }
 .hero .attitude[hidden] { display: none; }
 .hero .attitude label { display: inline-flex; align-items: center; gap: 0.45rem; }

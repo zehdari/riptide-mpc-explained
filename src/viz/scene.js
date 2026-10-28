@@ -5,6 +5,8 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
+import { toCreasedNormals } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { LineGeometry } from 'three/examples/jsm/lines/LineGeometry.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import { vehicle } from '../engine/talos.js';
@@ -39,6 +41,9 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   const scene = new THREE.Scene();
+  // Soft studio reflections so the metal and plastic read as materials, not flat fills.
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  const envMap = pmrem.fromScene(new RoomEnvironment(), 0.04).texture; // used by Talos's materials only
   scene.fog = new THREE.Fog(0xcfe7ec, 7, 22);
   const camera = new THREE.PerspectiveCamera(42, 1, 0.05, 80);
   const root = new THREE.Group();
@@ -85,7 +90,9 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
       g.scene.traverse((o) => {
         if (o.isMesh) {
           const m = o.material;
-          o.material = new THREE.MeshStandardMaterial({ color: m.color, metalness: 0.15, roughness: 0.65, transparent: m.transparent, opacity: m.opacity });
+          // CAD meshes need hard edges kept: split normals wherever faces meet at more than 35 degrees.
+          o.geometry = toCreasedNormals(o.geometry, (35 * Math.PI) / 180);
+          o.material = new THREE.MeshStandardMaterial({ color: m.color, metalness: 0.3, roughness: 0.5, envMap, envMapIntensity: 0.45, transparent: m.transparent, opacity: m.opacity });
         }
       });
       body.add(g.scene);
@@ -149,13 +156,15 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
   goal.visible = false;
   root.add(goal);
   const goalStem = line(0xd9480f, { dashed: true, width: 1.5, opacity: 0.6 });
+  const sketch = line(0xd9480f, { width: 4 }); // a path being drawn by hand
 
   // Picking on the floor plane.
   const ray = new THREE.Raycaster();
   let down = null;
   canvas.addEventListener('pointerdown', (e) => (down = { x: e.clientX, y: e.clientY, t: performance.now() }));
+  let drawing = false; // draw mode: drags trace a path instead of orbiting
   canvas.addEventListener('pointerup', (e) => {
-    if (!down || !onPick) return;
+    if (!down || !onPick || drawing) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
     if (moved > 6 || performance.now() - down.t > 600) return;
     const r = canvas.getBoundingClientRect();
@@ -166,6 +175,18 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
       onPick([p.x, p.y, p.z]);
     }
   });
+
+  // Where a screen point lands on the horizontal plane at depth z (ROS world frame).
+  const plane = new THREE.Plane();
+  function pointOnDepth(clientX, clientY, z) {
+    const r = canvas.getBoundingClientRect();
+    ray.setFromCamera(new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1), camera);
+    plane.set(new THREE.Vector3(0, 1, 0), -z); // ROS z is three's y (root is rotated)
+    const hit = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(plane, hit)) return null;
+    const p = root.worldToLocal(hit);
+    return [p.x, p.y, p.z];
+  }
 
   let fitted = false;
   function resize() {
@@ -199,6 +220,13 @@ export function createScene(canvas, { floorDepth = -3, onPick, cameraPos = [-1.9
 
   return {
     ready,
+    pointOnDepth,
+    setDrawing(on) {
+      drawing = on;
+      controls.enabled = !on;
+      canvas.style.cursor = on ? 'crosshair' : '';
+    },
+    setSketch(points) { sketch.set(points); },
     THREE,
     root,
     camera,

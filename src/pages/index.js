@@ -71,9 +71,66 @@ attInputs.forEach((input) => input.addEventListener('input', () => {
   if (!pending) pending = setTimeout(() => { pending = null; sendAttitude(); }, 120);
 }));
 
+// ---------- drawing a path ----------
+// In draw mode a drag traces a line at the goal's depth; on release it is simplified
+// to waypoints (Ramer-Douglas-Peucker) and flown as one planned path.
+const drawBtn = document.querySelector('[data-act="draw"]');
+let drawMode = false, stroke = null;
+const setDraw = (on) => {
+  drawMode = on;
+  drawBtn.setAttribute('aria-pressed', String(on));
+  drawBtn.textContent = on ? 'Drag on the pool…' : 'Draw a path';
+  scene.setDrawing(on);
+  if (!on) scene.setSketch([]);
+};
+function simplify(pts, tol) {
+  if (pts.length < 3) return pts;
+  const [a, b] = [pts[0], pts[pts.length - 1]];
+  const dx = b[0] - a[0], dy = b[1] - a[1], L = Math.hypot(dx, dy) || 1e-9;
+  let worst = 0, at = 0;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const d = Math.abs((pts[i][0] - a[0]) * dy - (pts[i][1] - a[1]) * dx) / L;
+    if (d > worst) { worst = d; at = i; }
+  }
+  if (worst < tol) return [a, b];
+  return [...simplify(pts.slice(0, at + 1), tol).slice(0, -1), ...simplify(pts.slice(at), tol)];
+}
+canvas.addEventListener('pointerdown', (e) => {
+  if (!drawMode || !last) return;
+  const z = (last.goal || last.refPosition)[2];
+  const p = scene.pointOnDepth(e.clientX, e.clientY, z);
+  if (!p) return;
+  canvas.setPointerCapture(e.pointerId);
+  stroke = { z, pts: [p] };
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!stroke) return;
+  const p = scene.pointOnDepth(e.clientX, e.clientY, stroke.z);
+  const q = stroke.pts[stroke.pts.length - 1];
+  if (p && Math.hypot(p[0] - q[0], p[1] - q[1]) > 0.03) {
+    stroke.pts.push(p);
+    scene.setSketch(stroke.pts);
+  }
+});
+canvas.addEventListener('pointerup', () => {
+  if (!stroke) return;
+  const s = stroke;
+  stroke = null;
+  setDraw(false);
+  // Keep the shape, drop the jitter; waypoints closer than 25 cm would only make turns in place.
+  const keep = simplify(s.pts, 0.06).filter((p, i, a) => i === 0 || Math.hypot(p[0] - a[i - 1][0], p[1] - a[i - 1][1]) > 0.25);
+  const length = keep.reduce((sum, p, i) => (i ? sum + Math.hypot(p[0] - keep[i - 1][0], p[1] - keep[i - 1][1]) : 0), 0);
+  if (keep.length < 2 && length < 0.3) return;
+  trail = [];
+  att[0] = att[1] = 0;
+  showAttitude();
+  worker.postMessage({ type: 'path', points: keep.map((p) => ({ position: [p[0], p[1], s.z], heading: 'PATH' })) });
+});
+
 document.querySelectorAll('[data-act]').forEach((b) =>
   b.addEventListener('click', () => {
     const act = b.dataset.act;
+    if (act === 'draw') return setDraw(!drawMode);
     if (act === 'attitude') {
       attPanel.hidden = !attPanel.hidden;
       b.setAttribute('aria-expanded', String(!attPanel.hidden));
