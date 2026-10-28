@@ -2,6 +2,12 @@
 // Edges: {from, to, label, bend, dash, width, color}. Hover or tap a node to light its neighbourhood.
 import { el } from './chart.js';
 
+const measure = document.createElement('canvas').getContext('2d');
+function textWidth(text, weight, size) {
+  measure.font = `${weight} ${size}px 'Archivo Variable', Archivo, system-ui, sans-serif`;
+  return measure.measureText(text).width;
+}
+
 export class Graph {
   constructor(container, { width = 900, height = 360, nodes = [], edges = [], onSelect, arrows = true, info } = {}) {
     this.W = width; this.H = height;
@@ -17,6 +23,7 @@ export class Graph {
     this.gEdges = el('g', {}, this.svg);
     this.gPulses = el('g', {}, this.svg);
     this.gNodes = el('g', {}, this.svg);
+    this.gLabels = el('g', {}, this.svg); // edge labels sit above nodes and edges
     this.nodes = new Map();
     this.edges = [];
     nodes.forEach((n) => this.addNode(n));
@@ -29,7 +36,9 @@ export class Graph {
   }
   addNode(n) {
     const g = el('g', { class: 'node', tabindex: 0, transform: `translate(${n.x},${n.y})` }, this.gNodes);
-    const w = n.w || 110, h = n.h || (n.sub ? 46 : 34);
+    // Boxes grow to fit their text, so a label is never cut off by its own box.
+    const fit = Math.max(textWidth(n.label || '', n.bold ? 650 : 400, 12.5), textWidth(n.sub || '', 400, 11.5)) + 24;
+    const w = Math.max(n.w || 0, fit, n.label || n.sub ? 0 : 110), h = n.h || (n.sub ? 46 : 34);
     if (n.shape === 'circle') el('circle', { r: n.r || 20 }, g);
     else if (n.shape === 'square') el('rect', { x: -(n.r || 8), y: -(n.r || 8), width: 2 * (n.r || 8), height: 2 * (n.r || 8), rx: 2 }, g);
     else el('rect', { x: -w / 2, y: -h / 2, width: w, height: h, rx: n.rx ?? 7 }, g);
@@ -77,7 +86,9 @@ export class Graph {
     if (e.opacity !== undefined) path.style.opacity = e.opacity;
     let label = null;
     if (e.label) {
-      label = el('text', { class: 'elabel', x: bend ? c.x : mx, y: (bend ? c.y : my) - 5 }, this.gEdges);
+      // On a curved edge, sit on the curve's midpoint (p0 + 2c + p1) / 4, not on its control point.
+      const lx = bend ? (p0.x + 2 * c.x + p1.x) / 4 : mx, ly = bend ? (p0.y + 2 * c.y + p1.y) / 4 : my;
+      label = el('text', { class: 'elabel', x: lx, y: ly - 5 }, this.gLabels);
       label.textContent = e.label;
     }
     const edge = { ...e, path, label };
