@@ -22,7 +22,7 @@
     </div>
     <figure class="fig">
       <div class="panel" id="est-graph"></div>
-      <figcaption><b>Which sensor corrects what.</b> Left, the measurements; right, the parts of the state. Edge labels are how strongly each correction is applied: a gain per sample, or a time constant for slow anchors. Hover a node.</figcaption>
+      <figcaption><b>Which sensor corrects what.</b> Left, the measurements; right, the parts of the state. Edge labels are how strongly each correction is applied: a gain per sample, or a time constant for slow anchors. Tap or hover a node.</figcaption>
     </figure>
     <div class="prose">
       <p>The corrections are complementary-filter style: fast sensors are trusted outright, slow or drifting references are blended in with a time constant <span class="m">\tau</span>, using a gain that accounts for the time since the last sample,</p>

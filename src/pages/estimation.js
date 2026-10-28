@@ -56,7 +56,7 @@ setup();
       { from: 'vel', to: 'dist', dash: true },
       { from: 'dist', to: 'model', label: 'τ_d', dash: true },
     ],
-    info: (n) => (note.textContent = n ? txt[n.id] : 'Hover a sensor or a part of the state.'),
+    info: (n) => (note.textContent = n ? txt[n.id] : 'Tap or hover a sensor or a part of the state.'),
   });
   g.highlight(null);
   host.appendChild(note);

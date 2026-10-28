@@ -29,7 +29,7 @@ const dofs = ['surge X', 'sway Y', 'heave Z', 'roll K', 'pitch M', 'yaw N'];
   new Graph(host, {
     width: W, height: 290, nodes, edges, arrows: false,
     info: (n) => {
-      if (!n) return (note.textContent = 'Hover a thruster or an axis.');
+      if (!n) return (note.textContent = 'Tap or hover a thruster or an axis.');
       if (n.id[0] === 't') {
         const i = +n.id.slice(1);
         note.textContent = `${thrusterNames[i]}: ` + dofs.map((d, j) => `${d.split(' ')[0]} ${T[j][i].toFixed(2)}`).join(', ') + ' (N or N·m per N of thrust)';

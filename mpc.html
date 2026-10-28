@@ -39,7 +39,7 @@
         <div id="fg"></div>
         <div id="fg-note" style="font-family:var(--sans);font-size:.86rem;color:var(--ink-2);min-height:2.6em"></div>
       </div>
-      <figcaption><b>The optimal control problem as a factor graph.</b> Hover a command <span class="m">u_k</span>: its effect flows down the chain of states, so it touches every tracking cost after it but none before. Switch to the condensed view to see the problem the solver actually works with: the states are gone, replaced by edges from each command to every later cost.</figcaption>
+      <figcaption><b>The optimal control problem as a factor graph.</b> Tap or hover a command <span class="m">u_k</span>: its effect flows down the chain of states, so it touches every tracking cost after it but none before. Switch to the condensed view to see the problem the solver actually works with: the states are gone, replaced by edges from each command to every later cost.</figcaption>
     </figure>
     <div class="prose">
       <p>That second picture is the whole design choice of Chapter 6 in miniature. Because <span class="m">x_0</span> is fixed and every later state is a function of the commands, the states can be eliminated (<em>condensing</em>), leaving an unconstrained-dynamics problem in the 240 commands alone. The price is that the graph becomes dense: command <span class="m">u_0</span> is now connected to all 30 costs, and the Hessian couples every pair of stages.</p>

@@ -37,8 +37,12 @@ export class LineChart {
     this.wrap.appendChild(this.tip);
     this.series = [];
     new ResizeObserver(() => this.draw()).observe(this.wrap);
+    this.svg.style.touchAction = 'pan-y'; // a sideways drag scrubs the readout; vertical still scrolls
     this.svg.addEventListener('pointermove', (e) => this.hover(e));
-    this.svg.addEventListener('pointerleave', () => this.unhover());
+    this.svg.addEventListener('pointerdown', (e) => this.hover(e));
+    // A touch "leaves" when the finger lifts; keep its readout until the next tap elsewhere.
+    this.svg.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') this.unhover(); });
+    tapOutside(this.svg, () => this.unhover());
   }
   set(series, opts = {}) {
     this.series = series;
@@ -174,6 +178,23 @@ export class LineChart {
   }
 }
 
+// Calls `off` when a touch or click lands outside `inside` (to dismiss a tapped readout).
+// One document listener for all of them; charts that were redrawn away drop out.
+const outside = new Set();
+let listening = false;
+export function tapOutside(inside, off) {
+  if (!listening) {
+    listening = true;
+    document.addEventListener('pointerdown', (e) => {
+      for (const o of outside) {
+        if (!o.inside.isConnected) outside.delete(o);
+        else if (!o.inside.contains(e.target)) o.off();
+      }
+    });
+  }
+  outside.add({ inside, off });
+}
+
 // Horizontal (stacked) bars: rows [{label, segments: [{value, color, name}]}]; diverging around 0 when values are signed.
 export function barChart(container, rows, { width = 640, rowH = 26, unit = '', digits = 1, labelW = 92, valueW = 64, max } = {}) {
   container.innerHTML = '';
@@ -182,6 +203,11 @@ export function barChart(container, rows, { width = 640, rowH = 26, unit = '', d
   container.appendChild(wrap);
   const H = rows.length * rowH + 6;
   const svg = el('svg', { class: 'chart', viewBox: `0 0 ${width} ${H}` }, wrap);
+  const tip = document.createElement('div');
+  tip.className = 'tip';
+  tip.hidden = true;
+  wrap.appendChild(tip);
+  tapOutside(svg, () => (tip.hidden = true));
   const lo = Math.min(0, ...rows.map((r) => r.segments.reduce((s, g) => s + Math.min(0, g.value), 0)));
   const hi = Math.max(0, ...rows.map((r) => r.segments.reduce((s, g) => s + Math.max(0, g.value), 0)));
   const span = max ?? Math.max(hi - lo, 1e-9);
@@ -199,9 +225,20 @@ export function barChart(container, rows, { width = 640, rowH = 26, unit = '', d
       const a = sx(Math.min(from, to)), b = sx(Math.max(from, to));
       const last = g.value >= 0 ? k === r.segments.length - 1 || r.segments.slice(k + 1).every((s) => s.value <= 0) : true;
       const w = Math.max(0, b - a - (k > 0 ? 2 : 0));
-      const rect = el('rect', { x: g.value >= 0 && k > 0 ? a + 2 : a, y: y + (rowH - h) / 2, width: w, height: h, rx: last ? 3 : 0, fill: g.color }, svg);
-      const t = el('title', {}, rect);
-      t.textContent = `${g.name || r.label}: ${g.value.toFixed(digits)} ${unit}`;
+      const rect = el('rect', { x: g.value >= 0 && k > 0 ? a + 2 : a, y: y + (rowH - h) / 2, width: w, height: h, rx: last ? 3 : 0, fill: g.color, style: 'cursor:pointer' }, svg);
+      const text = `${g.name || r.label}: <b>${g.value.toFixed(digits)}</b>${r.unit ?? (unit ? ' ' + unit : '')}`;
+      const show = () => {
+        const box = rect.getBoundingClientRect(), wb = wrap.getBoundingClientRect();
+        tip.innerHTML = text;
+        tip.hidden = false;
+        const cx = box.left + box.width / 2 - wb.left;
+        tip.style.left = `${Math.min(Math.max(cx, 60), wb.width - 60)}px`;
+        tip.style.top = `${box.top - wb.top}px`;
+        tip.style.transform = 'translate(-50%, -110%)';
+      };
+      rect.addEventListener('pointerdown', show);
+      rect.addEventListener('pointerenter', (e) => { if (e.pointerType === 'mouse') show(); });
+      rect.addEventListener('pointerleave', (e) => { if (e.pointerType === 'mouse') tip.hidden = true; });
     });
     const total = r.total ?? r.segments.reduce((s, g) => s + g.value, 0);
     el('text', { class: 'label', x: width - 4, y: y + rowH / 2 + 1, 'text-anchor': 'end', 'dominant-baseline': 'middle', style: 'font-variant-numeric: tabular-nums' }, svg).textContent = `${total.toFixed(digits)}${r.unit ?? (unit ? ' ' + unit : '')}`;

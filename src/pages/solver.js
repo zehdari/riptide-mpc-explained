@@ -78,13 +78,25 @@ setup();
     const mx = Math.max(...B.flat());
     let cells = '';
     B.forEach((row, j) => row.forEach((v, kk) => {
-      cells += `<rect x="${pad + kk * cs}" y="${pad + j * cs}" width="${cs + 0.3}" height="${cs + 0.3}" fill="${seqColor(v / mx)}"><title>stages ${j} and ${kk}: ${(v / mx).toFixed(2)}</title></rect>`;
+      cells += `<rect x="${pad + kk * cs}" y="${pad + j * cs}" width="${cs + 0.3}" height="${cs + 0.3}" fill="${seqColor(v / mx)}" data-j="${j}" data-k="${kk}" data-v="${(v / mx).toFixed(2)}"/>`;
     }));
     let ticks = '';
     for (let t = 0; t < N; t += 5) {
       ticks += `<text class="label" x="${pad + (t + 0.5) * cs}" y="${pad - 8}" text-anchor="middle">${t}</text><text class="label" x="${pad - 8}" y="${pad + (t + 0.5) * cs + 4}" text-anchor="end">${t}</text>`;
     }
-    left.innerHTML = `<div style="font-family:var(--sans);font-size:.86rem;color:var(--ink-2);margin-bottom:.3rem">Coupling between stages (each cell: one 8 × 8 block of H)</div><svg class="chart" viewBox="0 0 ${S} ${S}">${cells}${ticks}<text class="label" x="${pad}" y="14">stage of one command →</text><text class="label" transform="translate(14 ${pad}) rotate(90)">stage of the other →</text></svg>`;
+    left.innerHTML = `<div style="font-family:var(--sans);font-size:.86rem;color:var(--ink-2);margin-bottom:.3rem">Coupling between stages (each cell: one 8 × 8 block of H)</div><svg class="chart" viewBox="0 0 ${S} ${S}" style="touch-action:pan-y;cursor:crosshair">${cells}${ticks}<text class="label" x="${pad}" y="14">stage of one command →</text><text class="label" transform="translate(14 ${pad}) rotate(90)">stage of the other →</text><rect class="pick" width="${cs}" height="${cs}" fill="none" stroke="var(--accent)" stroke-width="2" visibility="hidden"/></svg><div class="cell-readout" style="font-family:var(--sans);font-size:.84rem;color:var(--ink-2);margin-top:.3rem;min-height:1.3em">Tap or hover a cell.</div>`;
+    // Tap, drag or hover a cell to read it (an SVG <title> never shows on a touch screen).
+    const svg = left.querySelector('svg'), pick = svg.querySelector('.pick'), out = left.querySelector('.cell-readout');
+    const read = (e) => {
+      const c = document.elementFromPoint(e.clientX, e.clientY); // not e.target: a touch stays captured by its first cell
+      if (!c?.dataset || c.dataset.j === undefined) return;
+      pick.setAttribute('x', c.getAttribute('x'));
+      pick.setAttribute('y', c.getAttribute('y'));
+      pick.setAttribute('visibility', 'visible');
+      out.innerHTML = `Stages <b>${c.dataset.j}</b> and <b>${c.dataset.k}</b>: <b>${c.dataset.v}</b> of the largest block`;
+    };
+    svg.addEventListener('pointerdown', read);
+    svg.addEventListener('pointermove', read);
   };
   const drawBlock = (H, n) => {
     const S = 420, pad = 44, cs = (S - pad) / 8;
