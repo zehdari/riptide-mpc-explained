@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The math in one place · How Talos flies</title>
+<meta name="description" content="Every equation of riptide_mpc on one page: notation, the Fossen model, thrusters, reference generation, the optimal control problem, the solver, estimation, identification, and Talos's parameters.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><circle cx='16' cy='16' r='13' fill='%23d9480f'/></svg>">
+</head>
+<body>
+<main class="sheet">
+  <header class="page-head">
+    <div class="kicker">Appendix A</div>
+    <h1>The math in one place</h1>
+    <p class="lede">Every equation the controller runs, in the order it runs them, with Talos's numbers. Nothing here is new: each block links back to the chapter that explains it.</p>
+  </header>
+  <article>
+    <div class="prose">
+      <h2 id="notation">Notation</h2>
+      <p>The state lives at the centre of mass (COM). World frame: <span class="m">z</span> up, water surface at <span class="m">z = 0</span>. Body frame: <span class="m">x</span> forward, <span class="m">y</span> left, <span class="m">z</span> up.</p>
+      <table class="params notation">
+        <thead><tr><th>Symbol</th><th>Meaning</th><th>Size, frame</th></tr></thead>
+        <tbody>
+          <tr><td><span class="m">p</span></td><td>COM position</td><td><span class="m">\R^3</span>, world</td></tr>
+          <tr><td><span class="m">q</span></td><td>attitude, body to world, <span class="m">(w,x,y,z)</span></td><td>unit quaternion</td></tr>
+          <tr><td><span class="m">v = (u,v,w)</span></td><td>linear velocity of the COM</td><td><span class="m">\R^3</span>, body</td></tr>
+          <tr><td><span class="m">\omega = (p,q,r)</span></td><td>angular rates</td><td><span class="m">\R^3</span>, body</td></tr>
+          <tr><td><span class="m">\bnu = (v, \omega)</span></td><td>body velocity</td><td><span class="m">\R^6</span>, body</td></tr>
+          <tr><td><span class="m">f</span></td><td>force each thruster actually produces</td><td><span class="m">\R^8</span>, N</td></tr>
+          <tr><td><span class="m">u_k</span></td><td>thruster commands for stage <span class="m">k</span> (the decisions)</td><td><span class="m">\R^8</span>, N</td></tr>
+          <tr><td><span class="m">U</span></td><td>all commands over the horizon</td><td><span class="m">\R^{240}</span></td></tr>
+          <tr><td><span class="m">\btau</span></td><td>wrench (force, torque) about the COM</td><td><span class="m">\R^6</span>, body</td></tr>
+          <tr><td><span class="m">\M,\ \mathbf C,\ \mathbf D,\ \mathbf g</span></td><td>mass, Coriolis, damping, restoring</td><td>Fossen's notation</td></tr>
+          <tr><td><span class="m">\T</span></td><td>thruster matrix</td><td><span class="m">\R^{6\times 8}</span></td></tr>
+          <tr><td><span class="m">R(q)</span></td><td>rotation matrix of <span class="m">q</span></td><td><span class="m">SO(3)</span></td></tr>
+          <tr><td><span class="m">S(a)</span></td><td>skew matrix, <span class="m">S(a)\,b = a \times b</span></td><td><span class="m">\R^{3\times 3}</span></td></tr>
+          <tr><td><span class="m">\otimes,\ \operatorname{Exp},\ \operatorname{Log}</span></td><td>quaternion product; rotation vector to quaternion and back</td><td></td></tr>
+          <tr><td><span class="m">\boxplus,\ \boxminus</span></td><td>add a tangent perturbation to a state; difference of two states</td><td>tangent: <span class="m">\R^{20}</span></td></tr>
+          <tr><td><span class="m">y_k</span></td><td>tracking error at stage <span class="m">k</span></td><td><span class="m">\R^{12}</span></td></tr>
+          <tr><td><span class="m">\hat d = (\hat d_F, \hat d_\tau)</span></td><td>learned disturbance: force, torque</td><td>world, body</td></tr>
+          <tr><td><span class="m">N,\ \Delta t</span></td><td>stages, stage length</td><td>30, 50 ms</td></tr>
+        </tbody>
+      </table>
+
+      <h2 id="model">The model</h2>
+      <p class="from">Explained in <a href="model.html#frames">Chapter 1</a> · <code>fossen_model.cpp</code></p>
+      <h3>State and kinematics</h3>
+      <div class="M">x = (p,\ q,\ v,\ \omega) \in \R^{13}, \qquad \dot p = R(q)\, v, \qquad \dot q = \tfrac12\, q \otimes \begin{bmatrix} 0 \\ \omega \end{bmatrix}</div>
+      <h3>Dynamics</h3>
+      <div class="M">\begin{aligned} \M\,\dot{\bnu} &amp;= \btau_{\text{thrust}} + \btau_d - \mathbf C_{RB}(\bnu)\bnu - \mathbf C_A(\bnu)\bnu \\ &amp;\quad - \phi\,\mathbf D(\bnu)\bnu - \mathbf g(\bEta) \end{aligned}</div>
+      <div class="M">\M = \M_{RB} + \M_A, \qquad \M_{RB} = \begin{bmatrix} m I_3 &amp; 0 \\ 0 &amp; I_g \end{bmatrix}, \qquad \M_A = \operatorname{diag}(X_{\dot u}, \dots, N_{\dot r})</div>
+      <p>Coriolis in momentum form, for <span class="m">\M_{RB}</span> and <span class="m">\M_A</span> alike, with <span class="m">(h_1, h_2) = \M\bnu</span>:</p>
+      <div class="M">\mathbf C(\M, \bnu)\,\bnu = \begin{bmatrix} \omega \times h_1 \\ v \times h_1 + \omega \times h_2 \end{bmatrix}</div>
+      <div class="M">\mathbf D(\bnu)\bnu = \mathbf D_l\, \bnu + \mathbf D_q\, |\bnu| \circ \bnu \qquad (\text{both diagonal})</div>
+      <div class="M">\mathbf g(\bEta) = -\begin{bmatrix} R(q)^\top \begin{bmatrix}0\\0\\ \phi B - W\end{bmatrix} \\[4pt] r_b \times R(q)^\top \begin{bmatrix}0\\0\\ \phi B\end{bmatrix} \end{bmatrix}, \qquad \begin{aligned} W &amp;= mg \\ B &amp;= \rho g \nabla \end{aligned}</div>
+      <div class="M">\btau_d = \begin{bmatrix} R(q)^\top \hat d_F \\ \hat d_\tau \end{bmatrix}</div>
+      <p><span class="m">\phi \in [0, 1]</span> is the wetted fraction of a buoyancy ellipsoid; it is 1 everywhere except at the surface, where it also moves <span class="m">r_b</span> toward the wet part.</p>
+      <h3>One integration step</h3>
+      <p class="from">Explained in <a href="model.html#integration">Chapter 1</a></p>
+      <div class="M">\operatorname{step}_h:\quad f \xrightarrow{\ h/2\ } f', \qquad x \xrightarrow{\ \text{RK4},\ f'\ \text{held}\ } x^+, \qquad f' \xrightarrow{\ h/2\ } f^+</div>
+      <p><span class="m">h = 2</span> ms for predictions, <span class="m">h = 25</span> ms for Jacobians. One stage <span class="m">F(x_k, u_k)</span> is <span class="m">\Delta t / h</span> steps with <span class="m">u_k</span> held.</p>
+
+      <h2 id="thrusters">Thrusters</h2>
+      <p class="from">Explained in <a href="thrusters.html#matrix">Chapter 2</a> · <code>thruster_dynamics.cpp</code>, <code>hardware_config.cpp</code></p>
+      <h3>Thruster matrix</h3>
+      <div class="M">\btau_{\text{thrust}} = \T f, \qquad \T_{:,i} = \begin{bmatrix} d_i \\ r_i \times d_i \end{bmatrix}</div>
+      <p><span class="m">d_i</span> is the unit thrust axis and <span class="m">r_i</span> the position relative to the COM, both from CAD. Near the surface each column is scaled by its disk's wetted fraction.</p>
+      <h3>Delay, lag, limits</h3>
+      <div class="M">f_{\text{target}}(t) = u(t - 30\ \text{ms})</div>
+      <div class="M">f \leftarrow f + \operatorname{clamp}\!\big((f_{\text{target}} - f)(1 - e^{-h/\tau}),\ \pm 300\,h\big), \qquad \tau = \begin{cases} 80\ \text{ms} &amp; \text{spinning up} \\ 60\ \text{ms} &amp; \text{otherwise} \end{cases}</div>
+      <div class="M">|u_i| \le 24\ \text{N}, \qquad \textstyle\sum_i |u_i| &gt; 73\ \text{N} \ \Rightarrow\ u \leftarrow u \cdot \dfrac{73}{\sum_i |u_i|}</div>
+      <h3>Allocation (feedforward only)</h3>
+      <p class="from">Explained in <a href="thrusters.html#allocation">Chapter 2</a></p>
+      <div class="M">f = \T^{+}\btau = \T^\top(\T\T^\top)^{-1}\btau</div>
+      <h3>Force to RPM</h3>
+      <p class="from">Explained in <a href="thrusters.html#rpm">Chapter 2</a> · Blue Robotics T200 data</p>
+      <div class="M">|F| = K_T\,\rho D^4 \Big(\frac{n}{60}\Big)^2, \qquad K_T = a + b\,n</div>
+      <p>Inverted for <span class="m">n</span> with a few Newton iterations.</p>
+
+      <h2 id="reference">Reference generation</h2>
+      <p class="from">Explained in <a href="reference.html#scurve">Chapter 4</a> · <code>motion_profile.cpp</code>, <code>path_plan.cpp</code></p>
+      <h3>S-curve</h3>
+      <p>Piecewise-constant jerk on a triple integrator, re-chosen every 2 ms: accelerate toward <span class="m">v_{\max}</span>, but brake once the stopping distance from one substep ahead exceeds the distance left. With no hold phase:</p>
+      <div class="M">d_{\text{stop}}(v) = v\sqrt{v/j}, \qquad a_{\text{peak}} = \min\!\big(\sqrt{jv},\ a_{\max}\big)</div>
+      <p>Inside the capture region (2 mm, 2 cm/s, 0.1 m/s²), a triple pole at <span class="m">-p</span>:</p>
+      <div class="M">j = p^3 e - 3p^2 v - 3p\, a, \qquad p = 10\ \text{s}^{-1}</div>
+      <p>Limits for a move at angle <span class="m">\theta</span> from horizontal:</p>
+      <div class="M">\frac{1}{L(\theta)} = \sqrt{\Big(\frac{\cos\theta}{L_h}\Big)^2 + \Big(\frac{\sin\theta}{L_v}\Big)^2}</div>
+      <h3>Path speed envelope</h3>
+      <p class="from">Explained in <a href="reference.html#paths">Chapter 4</a></p>
+      <div class="M">v(s) \le \min\Big\{ \frac{v_{\max}}{|dp/ds|},\ \frac{\omega_{\max}}{|d\psi/ds|},\ \sqrt{\frac{a_{\text{lat}}}{\kappa(s)}},\ \sqrt{\frac{\alpha_{\max}}{2\,|d^2\psi/ds^2|}} \Big\}</div>
+      <p>followed by a backward pass so the profile can always brake in time.</p>
+      <h3>Reference governor</h3>
+      <p class="from">Explained in <a href="reference.html#governor">Chapter 4</a></p>
+      <div class="M">v_{\max} \leftarrow \sigma\, v_{\max}, \qquad \sigma = \operatorname{clamp}\!\Big(1 - \frac{\ell - \ell_0}{\ell_1 - \ell_0},\ 0.1,\ 1\Big)</div>
+      <p><span class="m">\ell</span> is how far the vehicle is behind; <span class="m">\ell_0 = 0.15</span> m and <span class="m">\ell_1 = 0.40</span> m (0.05 and 0.25 rad for attitude). Past 1 m or 0.8 rad, the profile is re-seeded at the vehicle.</p>
+
+      <h2 id="problem">The optimal control problem</h2>
+      <p class="from">Explained in <a href="mpc.html#problem">Chapter 5</a> · <code>mpc.cpp</code></p>
+      <div class="M">\begin{aligned} \min_{U}\quad &amp; \sum_{k=1}^{N} w_k\, \big\| y_k \big\|^2_{Q} + \sum_{k=0}^{N-1} r\,\big\| \delta_k \big\|^2 + \sum_{k=0}^{N-1} r_\Delta \big\| \delta_k - \delta_{k-1} \big\|^2 \\[4pt] \text{s.t.}\quad &amp; x_0 = \Phi_{\text{delay}}(\hat x), \quad x_{k+1} = F(x_k, u_k), \quad |u_k| \le 24\ \text{N} \end{aligned}</div>
+      <p>with <span class="m">\delta_k = u_k - u^{\text{ff}}_k</span>, the deviation from the feedforward. <span class="m">\delta_{-1}</span> is the deviation of the command last sent, and <span class="m">w_k = 1</span>, except <span class="m">w_N = 5</span>.</p>
+      <h3>Decision state</h3>
+      <p class="from">Explained in <a href="mpc.html#state">Chapter 5</a></p>
+      <div class="M">\tilde x = (p,\ q,\ v,\ \omega,\ f), \qquad \text{tangent space } \R^{3+3+3+3+8} = \R^{20}</div>
+      <h3>Errors</h3>
+      <p class="from">Explained in <a href="mpc.html#errors">Chapter 5</a></p>
+      <div class="M">y_k = \begin{bmatrix} p_b - p_{\text{ref}} \\ \operatorname{Log}\!\big(q_{\text{ref}}^{-1} \otimes q\big) \\ v_b - R(q)^\top v_{\text{ref}} \\ \omega - R(q)^\top \omega_{\text{ref}} \end{bmatrix}, \qquad \begin{aligned} p_b &amp;= p + R(q)\, r_{bl} \\ v_b &amp;= v + \omega \times r_{bl} \end{aligned}</div>
+      <p>Errors are measured at <code>base_link</code>, offset <span class="m">r_{bl}</span> from the COM. In velocity mode, the velocity rows compare with the commanded body velocity and the pose rows drop out.</p>
+      <div class="M">Q = \operatorname{diag}\big(\underbrace{400\,I_3}_{\text{position}},\ \underbrace{3000,\,3000,\,300}_{\text{roll, pitch, yaw}},\ \underbrace{20\,I_3}_{\text{velocity}},\ \underbrace{10\,I_3}_{\text{rates}}\big)</div>
+      <h3>Feedforward</h3>
+      <p class="from">Explained in <a href="mpc.html#feedforward">Chapter 5</a></p>
+      <div class="M">\btau^{\text{ff}}_k = \M\big(\dot{\bnu}_{\text{ref}} - \dot{\bnu}\,\big|_{x_{\text{ref}},\ \tau = 0}\big), \qquad u^{\text{ff}}_k = \operatorname{clip}\big(\T^{+}\btau^{\text{ff}}_k\big)</div>
+      <p>sampled half a stage plus one rise time ahead, so the lagged thrust lands on time.</p>
+      <h3>Delay compensation</h3>
+      <p class="from">Explained in <a href="mpc.html#delay">Chapter 5</a></p>
+      <p><span class="m">\Phi_{\text{delay}}</span> rolls the estimate <span class="m">\hat x</span> forward 30 ms through a copy of the thruster replica, which holds every command still in flight. The reference runs on the same clock.</p>
+
+      <h2 id="solver">The solver</h2>
+      <p class="from">Explained in <a href="solver.html#manifold">Chapter 6</a> · <code>mpc.cpp</code>, <code>box_qp.cpp</code></p>
+      <h3>On the manifold</h3>
+      <div class="M" data-narrow="\begin{aligned} x \boxplus \delta &amp;= \big(p + \delta_p,\ q \otimes \operatorname{Exp}(\delta_\theta), \\ &amp;\qquad v + \delta_v,\ \omega + \delta_\omega,\ f + \delta_f\big) \\[4pt] a \boxminus b &amp;= \big(p_a - p_b,\ \operatorname{Log}(q_b^{-1} \otimes q_a), \\ &amp;\qquad v_a - v_b,\ \omega_a - \omega_b,\ f_a - f_b\big) \end{aligned}">\begin{aligned} x \boxplus \delta &amp;= \big(p + \delta_p,\ q \otimes \operatorname{Exp}(\delta_\theta),\ v + \delta_v,\ \omega + \delta_\omega,\ f + \delta_f\big) \\ a \boxminus b &amp;= \big(p_a - p_b,\ \operatorname{Log}(q_b^{-1} \otimes q_a),\ v_a - v_b,\ \omega_a - \omega_b,\ f_a - f_b\big) \end{aligned}</div>
+      <h3>Linearize</h3>
+      <p class="from">Explained in <a href="solver.html#jacobians">Chapter 6</a></p>
+      <p>Roll out <span class="m">\bar x_{k+1} = F(\bar x_k, \bar u_k)</span> from the warm start. Then, column by column with <span class="m">\varepsilon = 10^{-6}</span>:</p>
+      <div class="M">F(\bar x_k \boxplus \delta x,\ \bar u_k + \delta u) \boxminus F(\bar x_k, \bar u_k) \approx A_k\, \delta x + B_k\, \delta u, \qquad A_k \in \R^{20\times 20},\ B_k \in \R^{20\times 8}</div>
+      <h3>Condense</h3>
+      <p class="from">Explained in <a href="solver.html#condensing">Chapter 6</a></p>
+      <div class="M">P_0 = 0, \qquad P_{k+1} = A_k P_k + \big[\,0 \ \cdots\ B_k\ \cdots\ 0\,\big], \qquad M_k = \frac{\partial y_k}{\partial \delta x}\, P_k</div>
+      <div class="M">\begin{aligned} H &amp;= \textstyle\sum_{k} w_k M_k^\top Q M_k + r I + r_\Delta D^\top D \\ g &amp;= \textstyle\sum_{k} w_k M_k^\top Q\, y_k + r\,\delta + r_\Delta D^\top (D\,\delta - e_0) \end{aligned}</div>
+      <p><span class="m">D</span> is the stage-difference operator; <span class="m">e_0</span> carries <span class="m">\delta_{-1}</span> into the first stage.</p>
+      <h3>Box QP</h3>
+      <p class="from">Explained in <a href="solver.html#qp">Chapter 6</a></p>
+      <div class="M">\min_{\Delta U}\ \tfrac12\, \Delta U^\top H\, \Delta U + g^\top \Delta U \qquad \text{s.t.}\qquad -24 - U \le \Delta U \le 24 - U</div>
+      <p>Projected Newton, repeated until the free gradient is below <span class="m">10^{-8}</span> (50 iterations at most):</p>
+      <div class="M">\begin{aligned} \nabla &amp;= H\,\Delta U + g \\ \mathcal B &amp;= \{\, i : \Delta U_i \text{ at a bound}, \ \nabla_i \text{ outward} \,\} \\ H_{ff}\, d_f &amp;= -\nabla_f, \qquad d_{\mathcal B} = 0 \quad (\text{Cholesky}) \\ \Delta U &amp;\leftarrow \Pi\big(\Delta U + \alpha d\big), \quad \alpha = 1, \tfrac12, \tfrac14, \dots \end{aligned}</div>
+      <p>with <span class="m">\alpha</span> halved until the projected Armijo condition holds.</p>
+      <h3>Real-time iteration</h3>
+      <p class="from">Explained in <a href="solver.html#rti">Chapter 6</a></p>
+      <div class="M">U \leftarrow U + \Delta U, \qquad \text{send } u_0, \qquad U_{\text{warm}} = (u_1, \dots, u_{N-1}, u_{N-1})</div>
+      <p>One linearize-and-solve per 50 ms tick. The first tick, and any tick after a reset, starts from <span class="m">U^{\text{ff}}</span>. The <a href="build.html#tick">whole tick as pseudocode</a> is in Chapter 9.</p>
+
+      <h2 id="estimation">Estimation</h2>
+      <p class="from">Explained in <a href="estimation.html#why">Chapter 7</a> · <code>state_estimator.cpp</code></p>
+      <p>Propagate with the model and the thruster replica, then correct each channel as its measurement arrives:</p>
+      <div class="M">x \leftarrow x + k\,(z - h(x)), \qquad k = 1 - e^{-\Delta t / \tau}, \qquad \Delta t \le \tau</div>
+      <table class="params">
+        <thead><tr><th>Channel</th><th><span class="m">h(x)</span></th><th>Gain</th></tr></thead>
+        <tbody>
+          <tr><td>Gyro</td><td><span class="m">\omega</span></td><td>1</td></tr>
+          <tr><td>DVL</td><td><span class="m">v + \omega \times r_{\text{dvl}}</span>, at the measurement's time</td><td>0.7</td></tr>
+          <tr><td>IMU tilt</td><td>body "up" (rotates about <span class="m">\hat z_{\text{meas}} \times \hat z_{\text{est}}</span>)</td><td><span class="m">\tau = 1</span> s</td></tr>
+          <tr><td>EKF</td><td><span class="m">x,\ y</span>, heading</td><td><span class="m">\tau = 2</span> s</td></tr>
+        </tbody>
+      </table>
+      <h3>Disturbance</h3>
+      <p class="from">Explained in <a href="estimation.html#offsetfree">Chapter 7</a></p>
+      <div class="M">\begin{aligned} \hat d_F &amp;\leftarrow \hat d_F + \gamma\, \frac{R(q)\, \M_{v}\, e_v}{\tau_F}, &amp; |\hat d_F| &amp;\le 20\ \text{N} \\ \hat d_\tau &amp;\leftarrow \hat d_\tau + \gamma\, \frac{\M_{\omega}\, e_\omega}{\tau_\tau}, &amp; |\hat d_\tau| &amp;\le 5\ \text{N·m} \end{aligned}</div>
+      <div class="M">\gamma = \frac{1}{1 + (|v| / 0.1\ \text{m/s})^2} \cdot \frac{1}{1 + (|\omega| / 0.2\ \text{rad/s})^2}, \qquad \tau_F = \tau_\tau = 3\ \text{s}</div>
+      <p><span class="m">e_v, e_\omega</span> are the innovations, and <span class="m">\M_v, \M_\omega</span> the translational and rotational blocks of <span class="m">\M</span>. <span class="m">\hat d</span> enters every prediction stage and the feedforward as <span class="m">\btau_d</span>.</p>
+      <h3>Settle trust</h3>
+      <p class="from">Explained in <a href="estimation.html#trust">Chapter 7</a></p>
+      <div class="M">\text{trust} \leftarrow \begin{cases} 1 - e^{-\Delta t/0.25}\,(1 - \text{trust}) &amp; \text{settled} \\ \text{trust}\cdot e^{-\Delta t / 1.0} &amp; \text{otherwise} \end{cases}</div>
+
+      <h2 id="identification">Identification</h2>
+      <p class="from">Explained in <a href="identify.html#premise">Chapter 8</a> · <code>pool_identify</code></p>
+      <p>Thrust impulse between samples, from the commanded forces through the thruster model:</p>
+      <div class="M">j_k = \int_{t_{k-1}}^{t_k} \T\, f(t)\, dt</div>
+      <h3>Statics, from holds at several attitudes</h3>
+      <p class="from">Explained in <a href="identify.html#statics">Chapter 8</a></p>
+      <div class="M">B = \frac1K \sum_k \big(W - \hat u_k \cdot \bar f_k\big), \qquad \begin{bmatrix} [\hat u_1]_\times \\ \vdots \\ [\hat u_K]_\times \end{bmatrix} \mathrm p = \begin{bmatrix} \bar\tau_1 \\ \vdots \\ \bar\tau_K \end{bmatrix}, \qquad r_b = \mathrm p / B</div>
+      <p><span class="m">\hat u_k</span> is world "up" in the body at hold <span class="m">k</span>; <span class="m">\bar f_k, \bar\tau_k</span> are the mean thrust force and torque. An SVD of the stacked matrix reports which directions of <span class="m">r_b</span> the holds actually observed.</p>
+      <h3>Drag, from steady runs</h3>
+      <p class="from">Explained in <a href="identify.html#drag">Chapter 8</a></p>
+      <div class="M">\tau - \tau_{\text{hold}}(\hat u) = D_1\, v + D_2\, |v|\, v, \qquad D_1, D_2 \ge 0</div>
+      <h3>Added mass, from the acceleration windows</h3>
+      <p class="from">Explained in <a href="identify.html#inertia">Chapter 8</a></p>
+      <div class="M">M\,(v_j - v_i) = \big(C(t_j) - C(t_i)\big) - \sum_{k=i+1}^{j} \big(D_1 \bar v_k + D_2 |\bar v_k| \bar v_k\big)\, \Delta t_k</div>
+      <p><span class="m">C(t)</span> is the cumulative excess impulse <span class="m">\sum (j_k - \tau_{\text{hold}}\,\Delta t_k)</span>. One line through the origin over all windows gives the total <span class="m">M</span>. The fit is repeated with the thrust delayed by 0 to 0.6 s; if a delay beyond 0.25 s fits better, the "mass" is really lag and is rejected. Accepted: <span class="m">R^2 \ge 0.8</span>, added mass between −0.25 and 5 times the rigid value (3 for rotations).</p>
+
+      <h2 id="parameters">Talos's parameters</h2>
+      <p class="from">Where each comes from: <a href="matters.html#sources">Chapter 3</a> · <code>config/models/talos.yaml</code>, <code>config/mpc.yaml</code></p>
+      <table class="params">
+        <thead><tr><th>Parameter</th><th>Talos</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr class="group"><td colspan="3">Body</td></tr>
+          <tr><td>Mass <span class="m">m</span></td><td>34.307 kg</td><td>lab weigh-in</td></tr>
+          <tr><td>COM, from origin</td><td>(−0.150, 0.041, −0.016) m</td><td>lab</td></tr>
+          <tr><td><span class="m">I_g</span> diagonal</td><td>1.843, 1.005, 1.861 kg·m²</td><td>CAD</td></tr>
+          <tr><td><span class="m">I_g</span> off-diagonal (xy, xz, yz)</td><td>0.050, 0.095, −0.008 kg·m²</td><td>CAD</td></tr>
+          <tr><td><code>base_link</code>, from origin</td><td>(−0.14, 0.03, −0.09) m</td><td>CAD</td></tr>
+          <tr class="group"><td colspan="3">Hydrostatics</td></tr>
+          <tr><td>Displaced volume <span class="m">\nabla</span></td><td>0.03454 m³ (<span class="m">B</span> = 338.1 N vs <span class="m">W</span> = 336.4 N)</td><td>identification (statics)</td></tr>
+          <tr><td>COB <span class="m">r_b</span>, from COM</td><td>(0.0082, −0.0023, 0.0225) m</td><td>identification (statics)</td></tr>
+          <tr class="group"><td colspan="3">Hydrodynamics (surge, sway, heave, roll, pitch, yaw)</td></tr>
+          <tr><td>Added mass <span class="m">\M_A</span></td><td>123.8, 79.9, 74.1 kg; 0.062, 0.060, 2.087 kg·m²</td><td>identification (inertia)</td></tr>
+          <tr><td>Linear drag <span class="m">\mathbf D_l</span></td><td>15.7, 46.2, 12.1; 9.91, 3.00, 1.95</td><td>identification (drag)</td></tr>
+          <tr><td>Quadratic drag <span class="m">\mathbf D_q</span></td><td>223.6, 153.8, 266.4; 2.77, 1.50, 4.96</td><td>identification (drag)</td></tr>
+          <tr class="group"><td colspan="3">Thrusters (8 × T200)</td></tr>
+          <tr><td>Positions <span class="m">r_i</span>, axes <span class="m">d_i</span></td><td><a href="thrusters.html#matrix">Chapter 2</a></td><td>CAD</td></tr>
+          <tr><td>Force limit, total</td><td>±24 N each, 73 N summed</td><td>power budget</td></tr>
+          <tr><td>Delay, rise, fall, slew</td><td>30 ms, 80 ms, 60 ms, 300 N/s</td><td>estimated; lag check</td></tr>
+          <tr><td><span class="m">K_T = a + b\,n</span>, forward</td><td><span class="m">a</span> = 0.3964, <span class="m">b</span> = 1.48×10⁻⁵</td><td>Blue Robotics</td></tr>
+          <tr><td><span class="m">K_T</span>, reverse</td><td><span class="m">a</span> = 0.3114, <span class="m">b</span> = 1.25×10⁻⁵</td><td>Blue Robotics</td></tr>
+          <tr><td>Propeller diameter <span class="m">D</span></td><td>0.076 m</td><td>Blue Robotics</td></tr>
+          <tr class="group"><td colspan="3">Controller</td></tr>
+          <tr><td><span class="m">\Delta t</span>, <span class="m">N</span>, horizon</td><td>50 ms, 30, 1.5 s</td><td>tuning</td></tr>
+          <tr><td>Model step: prediction, Jacobians</td><td>2 ms, 25 ms</td><td>tuning</td></tr>
+          <tr><td><span class="m">Q</span>: position, attitude</td><td>400; 3000, 3000, 300</td><td>tuning</td></tr>
+          <tr><td><span class="m">Q</span>: velocity, rates (position mode)</td><td>20; 10</td><td>tuning</td></tr>
+          <tr><td><span class="m">Q</span>: velocity, rates (velocity mode)</td><td>100; 50</td><td>tuning</td></tr>
+          <tr><td>Terminal factor <span class="m">w_N</span></td><td>5</td><td>tuning</td></tr>
+          <tr><td><span class="m">r</span>, <span class="m">r_\Delta</span></td><td>0.001, 0.05</td><td>tuning</td></tr>
+          <tr><td>QP: iterations, tolerance</td><td>1 per tick (up to 50 inside), <span class="m">10^{-8}</span></td><td>tuning</td></tr>
+          <tr class="group"><td colspan="3">Motion limits</td></tr>
+          <tr><td>Horizontal: speed, accel, jerk</td><td>0.6 m/s, 0.1 m/s², 0.3 m/s³</td><td>tuning</td></tr>
+          <tr><td>Vertical: speed, accel</td><td>0.3 m/s, 0.2 m/s²</td><td>tuning</td></tr>
+          <tr><td>Angular: speed, accel, jerk</td><td>1.0 rad/s, 0.8 rad/s², 3.0 rad/s³</td><td>tuning</td></tr>
+          <tr><td>Path: corner radius, lateral accel</td><td>0.3 m, 0.3 m/s²</td><td>tuning</td></tr>
+          <tr class="group"><td colspan="3">Estimator</td></tr>
+          <tr><td>Disturbance time constants</td><td>3 s, 3 s</td><td>tuning</td></tr>
+          <tr><td>Disturbance limits</td><td>20 N, 5 N·m</td><td>tuning</td></tr>
+          <tr><td>Learning gate</td><td>0.1 m/s, 0.2 rad/s</td><td>tuning</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <nav class="next" aria-label="Chapter navigation"></nav>
+  </article>
+</main>
+<script type="module" src="/src/pages/math.js"></script>
+</body>
+</html>

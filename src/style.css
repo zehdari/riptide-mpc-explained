@@ -84,6 +84,8 @@ hr { border: 0; border-top: 1px solid var(--rule); margin: 3rem 0; }
 .rail ol > li > a:hover { color: var(--ink); }
 .rail ol > li > a[aria-current='page'] { color: var(--ink); font-weight: 650; }
 .rail ol > li > a[aria-current='page']::before { color: var(--accent); }
+.rail ol > li.appendix { margin-top: 0.6rem; padding-top: 0.6rem; border-top: 1px solid var(--rule); }
+.rail ol > li.appendix > a::before { content: 'A'; }
 .rail .toc { list-style: none; margin: 0.1rem 0 0.6rem 1.6rem; padding: 0; border-left: 1px solid var(--rule); }
 .rail .toc a { display: block; padding: 0.2rem 0 0.2rem 0.7rem; font-size: 0.84rem; color: var(--muted); text-decoration: none; }
 .rail .toc a.on { color: var(--ink); box-shadow: inset 2px 0 0 var(--accent); margin-left: -1px; }
@@ -163,6 +165,21 @@ table.params th { text-align: left; font-weight: 600; color: var(--ink-2); borde
 table.params td { border-bottom: 1px solid var(--rule); padding: 0.42rem 0.6rem 0.42rem 0; vertical-align: top; }
 table.params td:first-child { white-space: nowrap; }
 table.params code { font-size: 0.8rem; }
+table.params tr.group td { font-weight: 600; color: var(--ink); padding-top: 1rem; border-bottom-color: var(--ink-2); }
+.eqlink { display: block; margin: -1rem 0 1.2rem; text-align: right; font-family: var(--sans); font-size: 0.8rem; color: var(--muted); text-decoration: none; }
+.eqlink:hover { color: var(--accent); }
+.sheet .from { margin: -0.4rem 0 0.6rem; font-family: var(--sans); font-size: 0.8rem; color: var(--muted); }
+.sheet .from a { color: var(--ink-2); }
+.sheet h3 { font-size: 1.12rem; margin-top: 1.8rem; }
+.sheet h3 + .from { margin-top: -0.3rem; }
+@media print {
+  .rail, .menu-btn, .next, .eqlink { display: none !important; }
+  .shell { display: block; }
+  main { padding: 0; }
+  .sheet .page-head { padding-top: 0; }
+  .sheet h2 { break-after: avoid; }
+  .sheet .katex-display, .sheet table.params tr { break-inside: avoid; }
+}
 
 .next { display: flex; justify-content: space-between; gap: 1rem; margin-top: 4rem; padding-top: 1.4rem; border-top: 1px solid var(--rule); font-family: var(--sans); }
 .next a { text-decoration: none; display: block; }

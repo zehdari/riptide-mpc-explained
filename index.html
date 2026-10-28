@@ -50,7 +50,7 @@
   <article>
     <div class="prose">
       <p>Talos is the team's competition AUV: a 34 kg frame with eight thrusters, a DVL, an IMU, a fibre-optic gyro and a depth sensor. Its controller lives in <a href="https://github.com/osu-uwrt/riptide_control/tree/mpc/riptide_mpc"><code>riptide_control/riptide_mpc</code></a>. This site explains that controller completely: the physics it predicts with, how it decides where the robot should be, how it turns that into an optimization it can solve in a few milliseconds, and how it copes with a model that is never quite right.</p>
-      <p>If you are building an MPC for your own vehicle, the last chapter is a recipe. The chapters before it are the reasons behind each step.</p>
+      <p>If you are building an MPC for your own vehicle, the last chapter is a recipe. The chapters before it are the reasons behind each step. Already know MPC? <a href="math.html">All the math is on one page</a>, with Talos's numbers.</p>
 
       <h2 id="loop">The loop, one tick at a time</h2>
       <p>Each piece of the controller is a box below. Hover or tap one to see what it does and where it lives in the code. The dots show data moving through one 50 ms control tick.</p>
